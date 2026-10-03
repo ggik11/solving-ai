@@ -78,7 +78,7 @@ export default async function MePage() {
           </p>
         )}
         <p className="rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-sm text-[var(--color-muted-foreground)]">
-          지원 현황 · 매칭 이력 (준비 중)
+          빠른 매칭 이력 (준비 중, 4단계)
         </p>
         <Link
           href="/parties"

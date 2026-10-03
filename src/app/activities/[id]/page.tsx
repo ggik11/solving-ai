@@ -7,7 +7,16 @@ import { Badge } from "@/components/Badge";
 import { BookmarkButton } from "@/components/BookmarkButton";
 import { loadRecommendationForActivity } from "@/lib/recommendations/query";
 import { formatKst, getApplyPhase, needsSourceVerification, APPLY_PHASE_LABEL } from "@/lib/format";
+import { PARTY_STATUS_LABEL, partyStatusBadgeVariant } from "@/lib/party";
 import type { ActivityWithType } from "@/lib/supabase/types";
+
+interface ActivityPartyRow {
+  id: string;
+  title: string | null;
+  status: string;
+  capacity: number;
+  party_members: { profile_id: string; status: string }[];
+}
 
 const LOCATION_LABEL: Record<string, string> = { online: "온라인", offline: "오프라인", hybrid: "혼합" };
 const PARTICIPATION_LABEL: Record<string, string> = { solo: "개인 참여", team: "팀 참여", both: "개인·팀 모두 가능" };
@@ -30,7 +39,7 @@ export default async function ActivityDetailPage({ params }: { params: Promise<{
   const tagNames = (tags ?? []).map((t) => t.tag);
 
   const { data: userData } = await supabase.auth.getUser();
-  const [recommendation, bookmarkRes] = userData.user
+  const [recommendation, bookmarkRes, partiesRes] = userData.user
     ? await Promise.all([
         loadRecommendationForActivity(supabase, userData.user.id, activity, tagNames),
         supabase
@@ -39,9 +48,21 @@ export default async function ActivityDetailPage({ params }: { params: Promise<{
           .eq("profile_id", userData.user.id)
           .eq("activity_id", id)
           .maybeSingle(),
+        supabase
+          .from("parties")
+          .select("id, title, status, capacity, party_members(profile_id, status)")
+          .eq("activity_id", id)
+          .eq("source", "manual")
+          .in("status", ["recruiting", "full", "confirmed"])
+          .order("created_at", { ascending: false })
+          .returns<ActivityPartyRow[]>(),
       ])
-    : [null, { data: null }];
+    : [null, { data: null }, { data: null }];
   const isBookmarked = Boolean(bookmarkRes.data);
+  const relatedParties = (partiesRes.data ?? []).map((p) => ({
+    ...p,
+    activeMemberCount: p.party_members.filter((m) => m.status === "active").length,
+  }));
 
   const phase = getApplyPhase(activity.apply_start_at, activity.apply_end_at);
   const needsVerification = needsSourceVerification(activity.last_verified_at);
@@ -145,8 +166,42 @@ export default async function ActivityDetailPage({ params }: { params: Promise<{
       </section>
 
       <section className="mb-4">
-        <h2 className="mb-2 text-sm font-semibold text-[var(--color-muted-foreground)]">관련 파티 · 빠른 매칭</h2>
-        <EmptyState title="파티·매칭 기능은 준비 중이에요" description="팀 모집 기능은 3~4단계에서 구현됩니다." />
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-[var(--color-muted-foreground)]">관련 파티</h2>
+          {userData.user && activity.participation_mode !== "solo" && activity.status === "published" && (
+            <Link href={`/parties/new?activity=${id}`} className="text-sm text-[var(--color-brand-700)] underline">
+              파티 만들기
+            </Link>
+          )}
+        </div>
+        {!userData.user ? (
+          <EmptyState title="로그인하면 파티를 보고 지원할 수 있어요" />
+        ) : relatedParties.length > 0 ? (
+          <ul className="flex flex-col gap-2">
+            {relatedParties.map((p) => (
+              <li key={p.id}>
+                <Link
+                  href={`/parties/${p.id}`}
+                  className="flex items-center justify-between gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm"
+                >
+                  <span>{p.title ?? "제목 없는 파티"}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-[var(--color-muted-foreground)]">
+                      {p.activeMemberCount}/{p.capacity}명
+                    </span>
+                    <Badge variant={partyStatusBadgeVariant(p.status)}>{PARTY_STATUS_LABEL[p.status] ?? p.status}</Badge>
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <EmptyState
+            title="아직 만들어진 파티가 없어요"
+            description={activity.participation_mode === "solo" ? "개인 참여 활동이라 파티가 필요 없어요." : "가장 먼저 파티를 만들어 보세요."}
+          />
+        )}
+        <p className="mt-3 text-xs text-[var(--color-muted-foreground)]">빠른 매칭(자동 팀 구성)은 4단계에서 제공될 예정이에요.</p>
       </section>
     </PageContainer>
   );

@@ -1,4 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
+import { config } from "dotenv";
+import path from "node:path";
+
+// vitest는 Vite가 .env.local을 자동으로 읽어 들이지만 Playwright는 그렇지 않다 — 테스트(서비스
+// 역할 키로 데이터를 준비하는 e2e 스펙 등)가 쓸 수 있도록 여기서도 명시적으로 로드한다.
+config({ path: path.resolve(__dirname, ".env.local") });
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -15,10 +21,9 @@ export default defineConfig({
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
-    // next dev(Turbopack)의 HMR 웹소켓이 이 환경에서 핸드셰이크에 실패해 클라이언트 번들
-    // 부트스트랩이 막히고 하이드레이션 자체가 되지 않는 문제가 있었다(React 이벤트가 전혀
-    // 붙지 않아 폼이 네이티브 GET으로 제출됨). HMR이 없는 프로덕션 빌드로 띄워 피해간다 —
-    // 어차피 E2E는 프로덕션 빌드를 대상으로 하는 편이 더 바람직하다.
+    // 배포 산출물과 동일한 환경에서 검증하기 위해 프로덕션 빌드를 대상으로 한다(README 참고).
+    // 한때 dev 서버의 allowedDevOrigins 문제로 하이드레이션이 깨졌던 적이 있었는데(해결됨),
+    // 그것과 무관하게 E2E는 어차피 build+start를 쓰는 편이 더 바람직하다.
     command: "npm run build && npm run start",
     url: "http://127.0.0.1:3000",
     reuseExistingServer: !process.env.CI,
