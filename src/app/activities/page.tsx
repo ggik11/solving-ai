@@ -17,16 +17,24 @@ export default async function ActivitiesPage({
   const filters = parseFilters(resolvedSearchParams);
 
   const supabase = await createClient();
-  const [{ data: activityTypes }, result] = await Promise.all([
+  const [{ data: activityTypes }, result, { data: userData }] = await Promise.all([
     supabase.from("activity_types").select("id, name").order("name"),
     queryActivities(supabase, filters),
+    supabase.auth.getUser(),
   ]);
 
   const totalPages = Math.max(1, Math.ceil(result.count / PAGE_SIZE));
 
   return (
     <PageContainer>
-      <h1 className="mb-4 text-xl font-semibold">활동 탐색</h1>
+      <div className="mb-4 flex items-center justify-between">
+        <h1 className="text-xl font-semibold">활동 탐색</h1>
+        {userData.user && (
+          <Link href="/activities/submit" className="text-sm text-[var(--color-brand-700)] underline">
+            활동 제보하기
+          </Link>
+        )}
+      </div>
       <ActivityFilterForm filters={filters} activityTypes={activityTypes ?? []} />
 
       {result.error ? (

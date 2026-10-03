@@ -18,6 +18,30 @@ export default function AdminHomePage() {
         >
           CSV로 활동 가져오기
         </Link>
+        <Link
+          href="/admin/submissions"
+          className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-sm font-medium"
+        >
+          활동 제보 검토
+        </Link>
+        <Link
+          href="/admin/reports"
+          className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-sm font-medium"
+        >
+          신고 관리
+        </Link>
+        <Link
+          href="/admin/accounts"
+          className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-sm font-medium"
+        >
+          계정 관리
+        </Link>
+        <Link
+          href="/admin/audit-logs"
+          className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-sm font-medium"
+        >
+          감사 로그
+        </Link>
       </div>
     </PageContainer>
   );

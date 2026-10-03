@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { getCurrentUserAndProfile } from "@/lib/auth";
 import { PageContainer } from "@/components/PageContainer";
 import { BlockToggleButton } from "@/components/BlockToggleButton";
+import { ReportButton } from "@/components/ReportButton";
 import { blockedCounterpartIds, type BlockRow } from "@/lib/blocks";
 import type { ChatMessage } from "@/lib/supabase/types";
 import { ChatRoomClient } from "./ChatRoomClient";
@@ -99,7 +100,10 @@ export default async function ChatRoomPage({ params }: { params: Promise<{ roomI
               {m.party_role_slots ? ` · ${m.party_role_slots.role_name}` : ""}
             </span>
             {m.profile_id !== user.id && (
-              <BlockToggleButton profileId={m.profile_id} initialBlocked={blockedIds.has(m.profile_id)} />
+              <span className="flex items-center gap-2">
+                <BlockToggleButton profileId={m.profile_id} initialBlocked={blockedIds.has(m.profile_id)} />
+                <ReportButton targetType="profile" targetId={m.profile_id} />
+              </span>
             )}
           </li>
         ))}

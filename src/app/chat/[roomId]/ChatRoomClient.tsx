@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { LinkifiedText } from "@/components/LinkifiedText";
+import { ReportButton } from "@/components/ReportButton";
 import type { ChatMessage } from "@/lib/supabase/types";
 import { loadNewerMessagesAction, loadOlderMessagesAction, markChatReadAction, sendChatMessageAction } from "./actions";
 
@@ -306,6 +307,7 @@ function MessageBubble({
             </button>
           </>
         )}
+        {!isMine && !message.id.startsWith("temp:") && <ReportButton targetType="chat_message" targetId={message.id} />}
       </div>
     </div>
   );

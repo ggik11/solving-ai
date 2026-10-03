@@ -2,8 +2,8 @@
 
 ## 현재 상태 (2026-10-04 기준)
 
-- **완료:** 1단계(설계) + 설계 수정 3건, 2-A(뼈대+DB), 2-B(화면: 로그인/온보딩/활동 탐색·상세/관리자 CRUD·CSV 가져오기), 3단계(추천·북마크·파티), 3단계 보완(역할 슬롯/활동당 가입 규칙/파티 정보 수정), 4-A(팀 채팅 + 앱 내 알림), 4-B(빠른 매칭: 알고리즘·DB 함수·스케줄 워커·화면), 5단계 일부(매칭 로직 일치 검증 + 추가 시나리오 테스트, 5-A 차단)
-- **진행 중:** 5-A(신고·관리자·회원 탈퇴 — 차단은 완료), 나머지 5단계(접근통제 테스트 보강, docs 보완, 반응형 전체 재확인) 미착수
+- **완료:** 1단계(설계) + 설계 수정 3건, 2-A(뼈대+DB), 2-B(화면: 로그인/온보딩/활동 탐색·상세/관리자 CRUD·CSV 가져오기), 3단계(추천·북마크·파티), 3단계 보완(역할 슬롯/활동당 가입 규칙/파티 정보 수정), 4-A(팀 채팅 + 앱 내 알림), 4-B(빠른 매칭: 알고리즘·DB 함수·스케줄 워커·화면), 5단계 일부(매칭 로직 일치 검증 + 추가 시나리오 테스트, 5-A 차단·신고·관리자·계정 정지·활동 제보)
+- **진행 중:** 5-A(회원 탈퇴만 남음), 나머지 5단계(docs 보완, 반응형 전체 재확인) 미착수
 - 실행 방법·테스트 계정·접속 주소는 `README.md` 참조. 설계 배경은 `docs/architecture.md` 참조.
 
 ## 3단계 진행 상황
@@ -59,7 +59,20 @@
 - **새 파티 추천 제외 (앱 레이어, `src/lib/blocks.ts`):** 활동 상세의 "관련 파티" 목록에서 활성 멤버 중 차단 관계가 있는 파티를 제외한다(`filterPartiesExcludingBlocked`, 순수 함수 + 단위 테스트).
 - **화면:** `/me/blocked`(차단 목록 + 해제), `/chat/[roomId]`와 `/parties/[id]`의 멤버 목록에 "차단하기/차단 해제" 버튼 추가(`BlockToggleButton`, `BookmarkButton`과 같은 낙관적 토글 패턴). 이 앱에는 별도의 "다른 사용자 프로필" 화면이 없어(알려진 제한 8번 참조) 채팅·파티 멤버 목록을 차단의 진입점으로 삼았다 — 의도적으로 범위를 좁힌 선택.
 - **검증:** 단위 테스트(`tests/unit/blocks.test.ts`, 7건) + 통합 테스트(`tests/rls/blocking.test.ts`, 3건: 차단된 멤버가 있으면 지원 거부/차단 없으면 정상 지원/차단한 수신자에게 알림 미생성 + 멤버십은 유지됨 확인). `npm test` **110/110 통과**, `lint`/`typecheck`/`build` 모두 성공.
-- **작업 중 발견하고 고친 문제:** `seed.sql`에 데모용으로 넣어둔 student1↔student3 고정 차단 관계가, `apply_to_party`가 차단을 검사하게 된 뒤로 그 관계와 전혀 무관한 다른 테스트(`party_lifecycle.test.ts`, `matching.test.ts`)에서 두 사용자가 우연히 팀장/지원자로 짝지어질 때 뜻밖의 `BLOCKED_MEMBER` 거부를 유발했다. 데모 차단 시드를 제거하고, 그 관계가 실제로 필요한 두 테스트(`matching_consistency.test.ts`, `matching_scenarios.test.ts`의 "차단 관계" 케이스)는 각자 테스트 안에서 차단을 만들고 `afterEach`에서 정리하도록 바꿔 공유 테스트 계정 간의 숨은 결합을 없앴다.
+- **작업 중 발견하고 고친 문제:** `seed.sql`에 데모용으로 넣어둔 student1↔student3 고정 차단 관계가, `apply_to_party`가 차단을 검사하게 된 뒤로 그 관계와 전혀 무관한 다른 테스트(`party_lifecycle.test.ts`, `matching.test.ts`)에서 두 사용자가 우연히 팀장/지원자로 짝지어질 때 뜻밖의 `BLOCKED_MEMBER` 거부를 유발했다. 데모 차단 시드를 제거하고, 그 관계가 실제로 필요한 두 테스트(`matching_consistency.test.ts`, `matching_scenarios.test.ts`의 "차단 관계" 케이스)는 각자 테스트 안에서 차단을 만들고 `afterEach`에서 정리하도록 바꿔 공유 테스트 계정 간의 숨은 결합을 없앴다. 같은 세션에서 `tests/rls/matching.test.ts`의 `expect(result.new_proposals).toBe(1)`가 `run_match_worker`의 전역 카운트를 직접 비교해 pg_cron 백그라운드 틱과 경합하는 pre-existing flaky 단언이었음을 발견해, 이미 바로 다음 줄에 있던 `activity_id` 스코프 검증(다른 모든 매칭 테스트 파일이 쓰는 패턴)만 남기고 제거했다.
+
+## 5-A단계: 신고·관리자·계정 정지·활동 제보 (완료)
+
+`reports`/`audit_logs` 테이블과 RLS는 **2단계(기반)에서 이미 만들어져 있었다**(`activities_select`의 `created_by = auth.uid()` 절, CSV 가져오기의 `status='draft'` 비공개 등록 패턴도 마찬가지) — 하지만 그 위에 DB 함수도 화면도 전혀 없었다. 마이그레이션 `20261004020000`에서 한 번에 연결했다.
+
+- **신고 (`create_report`):** 사유(스팸/욕설·혐오/부적절/사기/기타 5종 — `reports.reason`에 CHECK 추가) + 설명(`description` 컬럼 신설) 입력, 시간당 5건 빈도 제한(`app_settings.report_rate_limits`), 자기 자신(profile) 신고 금지. `reports` INSERT RLS를 운영자 전용으로 좁혀(기존 "본인만" 정책을 대체) 일반 사용자는 이 함수를 반드시 거치게 했다 — 파티/채팅 함수와 같은 패턴. UI: `ReportButton`(사유 선택 + 설명 인라인 폼)을 파티 멤버·파티 자체·채팅 멤버·채팅 메시지 네 곳에 붙였다.
+- **신고 처리 (`update_report_status`):** 운영자만 접수/검토 중/조치/기각으로 전환, 처리 메모를 감사 로그에 남긴다. `/admin/reports`에서 상태 변경 버튼으로 조작.
+- **신고된 메시지 최소 범위 열람 (`get_reported_message_context`):** "일반적인 전체 채팅 열람 도구는 만들지 않는다"는 지시서 요구를 그대로 지켰다 — 신고된 메시지 **전후 3개씩만** 반환하고(방 전체를 돌려주지 않음), 운영자만 호출 가능하며, 조회 자체를 `view_reported_message_context`로 감사 로그에 남긴다. `/admin/reports`에서 `target_type='chat_message'`인 신고에만 "메시지 보기" 버튼이 뜬다.
+- **계정 정지 (`suspend_account`/`unsuspend_account`):** `profiles.account_status`는 2단계부터 `suspended`/`withdrawn`을 지원했지만 아무것도 강제하지 않았다. **운영자 계정은 정지할 수 없다**(`is_admin_profile` 헬퍼로 안전장치). `/admin/accounts`에서 닉네임 검색 + 정지(사유 입력)/해제.
+- **계정 정지 강제 — 테이블 레벨 트리거:** 기존 SECURITY DEFINER 함수 10여 개를 하나하나 고치는 대신, `parties`/`party_members`/`party_applications`/`chat_messages`/`matching_queue`/`match_proposal_members`에 공통 `BEFORE INSERT OR UPDATE` 트리거(`_enforce_active_account`)를 달아 "그 행을 쓰려는 실제 행위자(`auth.uid()`)"의 계정이 active가 아니면 거부한다. `auth.uid()`가 null(서비스 롤 — 워커/시드)이면 통과시킨다. 이렇게 하면 지원·메시지·매칭 참가·파티 생성·승인·위임·해산 등 그 테이블을 거치는 모든 현재·향후 쓰기 경로가 한 번에 보호된다 — 행위자 기준이므로, 예를 들어 팀장이 지원을 승인할 때는 "팀장"이 active인지를 검사한다(승인되는 지원자 본인이 아니라).
+- **사용자 활동 제보 (`submit_activity`) + 운영자 승인/거절:** 별도 테이블을 새로 만들지 않고 `activities`를 재사용했다 — 2단계가 이미 "사용자 제보" 가능성을 염두에 둔 흔적(RLS의 `created_by` 절)이 있었다. 제보는 `status='draft'`로 비공개 생성되고(하루 5건 제한), `/admin/submissions`가 **모든 draft 활동**(운영자 자신의 미완성 초안 포함 — 의도적으로 구분하지 않음, 운영자도 같은 화면에서 바로 공개 전환할 수 있어 유용하다)을 보여준다. 승인(`approve_activity_submission`)은 `published`로 전환 + 제보자 알림, 거절(`reject_activity_submission`)은 `archived`로 전환 + 사유를 담은 알림.
+- **감사 로그:** `_log_audit_action()` 내부 헬퍼로 신고 상태 변경/신고 메시지 열람/계정 정지·해제/제보 승인·거절을 모두 기록한다. `/admin/audit-logs`가 실행자·행동·대상·메타데이터를 보여준다.
+- **검증:** 통합 테스트(`tests/rls/reports_and_moderation.test.ts`, 11건) — 잘못된 사유/자기 신고 거부, 빈도 제한, 일반 사용자의 상태 변경·메시지 컨텍스트·계정 정지 거부(각각 `NOT_ADMIN`), 운영자 계정 정지 불가, **정지된 사용자의 파티 생성·매칭 참가 거부 + 해제 후 정상 동작 복구**, 일반 사용자의 `audit_logs` 조회 결과 0건(RLS), `user_roles` 자가 승격 불가, 제보→승인(공개 전환 + 알림)·제보→거절(보관 전환 + 사유 포함 알림) 왕복. E2E(`tests/e2e/report-moderation-flow.spec.ts`) — 파티 멤버 신고(UI) → 관리자 상태 변경(UI) → 감사 로그 반영까지 실제 화면으로 확인. `npm test` **121/121 통과**, `lint`/`typecheck`/`build`/전체 Playwright(7/7) 모두 성공. `/admin/reports`·`/admin/accounts`·`/admin/submissions`·`/admin/audit-logs`·`/me/blocked`·`/activities/submit`를 360px/1440px로 스크린샷 확인 — 가로 스크롤 없음.
 
 
 

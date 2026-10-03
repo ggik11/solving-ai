@@ -81,8 +81,11 @@ describe("빠른 매칭 — DB 함수/워커", () => {
     });
     expect(join2Error).toBeNull();
 
-    const result = await runWorker();
-    expect(result.new_proposals).toBe(1);
+    // run_match_worker는 대기 중인 모든 (활동,템플릿) 그룹을 한 번에 처리하므로(다른 테스트
+    // 파일의 그룹, pg_cron의 백그라운드 틱과 공유됨), 전역 new_proposals 카운트는 이 활동
+    // 하나에 대한 기대값과 직접 비교할 수 없다(실제로 레이스로 flaky했다) — activity_id로
+    // 좁혀서 검증한다(다른 테스트 파일들과 동일한 패턴).
+    await runWorker();
 
     const admin = createAdminClient();
     const { data: proposals } = await admin.from("match_proposals").select("id, status").eq("activity_id", activityId);

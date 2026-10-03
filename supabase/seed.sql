@@ -364,6 +364,6 @@ on conflict do nothing;
 -- 공유 테스트 계정(student1~4) 조합에 따라 우연히 영향을 받는다. 차단이 필요한 테스트는
 -- 각자 블록을 만들고 끝나면 정리한다(tests/rls/blocking.test.ts, matching_*.test.ts).
 
-insert into public.reports (reporter_id, target_type, target_id, reason, status)
+insert into public.reports (reporter_id, target_type, target_id, reason, description, status)
 select 'a0000000-0000-0000-0000-000000000002', 'profile', 'a0000000-0000-0000-0000-000000000004',
-       '데모용 신고 샘플입니다.', 'open';
+       'other', '데모용 신고 샘플입니다.', 'open';

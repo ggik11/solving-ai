@@ -15,6 +15,7 @@ import {
 } from "@/lib/party";
 import { blockedCounterpartIds, type BlockRow } from "@/lib/blocks";
 import { BlockToggleButton } from "@/components/BlockToggleButton";
+import { ReportButton } from "@/components/ReportButton";
 import { PartyActionsPanel } from "./PartyActionsPanel";
 import { ApplicationDecisionButtons } from "./ApplicationDecisionButtons";
 
@@ -143,6 +144,9 @@ export default async function PartyDetailPage({ params }: { params: Promise<{ id
         )}
       </div>
       {party.description && <p className="mb-4 text-sm whitespace-pre-wrap">{party.description}</p>}
+      <div className="mb-4">
+        <ReportButton targetType="party" targetId={party.id} label="이 파티 신고하기" />
+      </div>
 
       <section className="mb-4 flex flex-col gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm">
         <Row label="정원" value={`${members.length} / ${party.capacity}명`} />
@@ -175,7 +179,10 @@ export default async function PartyDetailPage({ params }: { params: Promise<{ id
                 {m.is_leader && <Badge variant="info">팀장</Badge>}
                 {m.is_confirmed && <Badge variant="success">확정</Badge>}
                 {m.profile_id !== user.id && (
-                  <BlockToggleButton profileId={m.profile_id} initialBlocked={blockedIds.has(m.profile_id)} />
+                  <>
+                    <BlockToggleButton profileId={m.profile_id} initialBlocked={blockedIds.has(m.profile_id)} />
+                    <ReportButton targetType="profile" targetId={m.profile_id} />
+                  </>
                 )}
               </div>
             </li>
