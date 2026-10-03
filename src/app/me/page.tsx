@@ -23,6 +23,12 @@ export default async function MePage() {
 
   const isAdmin = await isCurrentUserAdmin();
 
+  const { count: unreadNotificationCount } = await supabase
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .eq("profile_id", user.id)
+    .is("read_at", null);
+
   const { data: bookmarks } = await supabase
     .from("bookmarks")
     .select("activity_id, activities(id, title, apply_end_at)")
@@ -85,6 +91,13 @@ export default async function MePage() {
           className="rounded-md border border-[var(--color-brand-300)] bg-[var(--color-brand-50)] px-4 py-3 text-sm font-medium text-[var(--color-brand-700)]"
         >
           내 파티 보기
+        </Link>
+        <Link
+          href="/notifications"
+          className="flex items-center justify-between rounded-md border border-[var(--color-brand-300)] bg-[var(--color-brand-50)] px-4 py-3 text-sm font-medium text-[var(--color-brand-700)]"
+        >
+          알림
+          {(unreadNotificationCount ?? 0) > 0 && <Badge variant="danger">{unreadNotificationCount}</Badge>}
         </Link>
         {isAdmin && (
           <Link

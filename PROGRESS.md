@@ -3,8 +3,7 @@
 ## 현재 상태 (2026-10-03 기준)
 
 - **완료:** 1단계(설계) + 설계 수정 3건, 2-A(뼈대+DB), 2-B(화면: 로그인/온보딩/활동 탐색·상세/관리자 CRUD·CSV 가져오기), 3단계(추천·북마크·파티), 3단계 보완(역할 슬롯/활동당 가입 규칙/파티 정보 수정), 4-A(팀 채팅 + 앱 내 알림)
-- **진행 중:** 4-B(빠른 매칭 워커) — 이번 4-A 작업에서는 건드리지 않음
-- **미착수:** 5단계(운영·검증)
+- **미착수:** 4-B(빠른 매칭 워커 — 이번 4-A 작업에서는 의도적으로 건드리지 않음), 5단계(운영·검증)
 - 실행 방법·테스트 계정·접속 주소는 `README.md` 참조. 설계 배경은 `docs/architecture.md` 참조.
 
 ## 3단계 진행 상황
@@ -28,9 +27,10 @@
 빠른 매칭(4-B)은 이번 범위에서 건드리지 않았다. 설계 배경·근거는 `docs/architecture.md` 11장 참조.
 
 - **채팅 DB·권한 (커밋 `2c33cfc`, 마이그레이션 `20261003160000`, `20261003161000`):** `send_chat_message`/`mark_chat_read`/`list_my_chat_rooms`/`mark_notification_read`/`mark_all_notifications_read` SECURITY DEFINER 함수를 추가하고, `chat_messages`/`chat_read_states`/`notifications`의 INSERT·UPDATE RLS를 운영자 전용으로 좁혀 일반 사용자는 반드시 이 함수들을 거치게 했다(기존 파티 함수와 동일한 패턴). 메시지는 `client_message_id` 기준으로 멱등 재시도되고(동시 재시도 3건을 보내도 1건만 저장 — `tests/rls/chat.test.ts`), 분당 전송 횟수를 `app_settings.chat_rate_limits`로 제한한다. 지원 승인/탈퇴/팀장 위임/팀 확정 시 기존 파티 함수(`approve_application`/`leave_party`/`delegate_leader`/`confirm_party`)가 시스템 메시지를 자동으로 남긴다. **Realtime은 처음 계획했던 "postgres_changes + private 채널"이 아니라 Broadcast-from-Database로 구현했다** — 로컬 스택에서 두 브라우저로 직접 검증하다가 `private` 채널 옵션이 Postgres Changes에는 적용되지 않는다는 사실(공식 문서)을 발견해 설계를 바꿨다. 상세 이유와 메커니즘은 `docs/architecture.md` 11.2절 참조.
-- **채팅 화면 (커밋 예정, 이 커밋):** `/chat`(내 채팅방 목록 — 파티 제목, 마지막 메시지 미리보기, 안 읽은 수 배지), `/chat/[roomId]`(메시지 목록 + 역할 포함 멤버 목록 + "팀을 나가도 과거 내역은 남는다" 안내). 하단 탭 "채팅"의 "준비 중" 빈 상태를 실제 화면으로 교체했고, 하단 탭에 안 읽은 메시지 수 배지를 추가했다(`src/lib/nav-badges.ts`가 루트 레이아웃에서 집계해 `BottomNav`에 내려준다). 메시지는 전송 중/실패/재시도 상태를 보여주고(`src/app/chat/[roomId]/ChatRoomClient.tsx`), 과거 내역은 커서 기반("이전 메시지 더 보기")으로 불러온다. 메시지 본문은 항상 일반 텍스트로 렌더링하고(`dangerouslySetInnerHTML` 미사용) `http(s)://` 링크만 클릭 가능하게 바꾼다(`src/lib/chat.ts`의 `splitMessageSegments`, 단위 테스트 포함). 채팅방이 (재)연결될 때마다 마지막으로 받은 메시지 이후를 따라잡는 보강 로직을 포함한다(Broadcast는 과거 이벤트를 재생하지 않으므로).
+- **채팅 화면 (커밋 `ac05fcc`):** `/chat`(내 채팅방 목록 — 파티 제목, 마지막 메시지 미리보기, 안 읽은 수 배지), `/chat/[roomId]`(메시지 목록 + 역할 포함 멤버 목록 + "팀을 나가도 과거 내역은 남는다" 안내). 하단 탭 "채팅"의 "준비 중" 빈 상태를 실제 화면으로 교체했고, 하단 탭에 안 읽은 메시지 수 배지를 추가했다(`src/lib/nav-badges.ts`가 루트 레이아웃에서 집계해 `BottomNav`에 내려준다). 메시지는 전송 중/실패/재시도 상태를 보여주고(`src/app/chat/[roomId]/ChatRoomClient.tsx`), 과거 내역은 커서 기반("이전 메시지 더 보기")으로 불러온다. 메시지 본문은 항상 일반 텍스트로 렌더링하고(`dangerouslySetInnerHTML` 미사용) `http(s)://` 링크만 클릭 가능하게 바꾼다(`src/lib/chat.ts`의 `splitMessageSegments`, 단위 테스트 포함). 채팅방이 (재)연결될 때마다 마지막으로 받은 메시지 이후를 따라잡는 보강 로직을 포함한다(Broadcast는 과거 이벤트를 재생하지 않으므로). 방을 여는 시점에 서버 컴포넌트에서 곧바로 `mark_chat_read`를 호출해(클라이언트 하트비트만 믿으면 읽자마자 바로 다른 화면으로 이동할 때 그 비동기 호출이 끝나기 전에 떠나버리는 경우가 있었다) 읽음 처리를 확정한다.
 - **탈퇴/강퇴 접근 차단:** DB/RLS 레벨에서 조회·전송·Realtime 수신이 모두 막히고(`tests/rls/chat.test.ts`), 이미 열려 있던 연결은 15초 주기 하트비트가 멤버십을 재확인해 `NOT_A_MEMBER`를 받으면 클라이언트가 스스로 구독을 끊는다. 상세는 `docs/architecture.md` 11.4절.
-- **검증:** 통합 테스트(`tests/rls/chat.test.ts`, 6건) — 승인 즉시 조회/전송 가능 + 합류 시스템 메시지, 다른 팀 멤버의 조회/전송 거부(직접 테이블 INSERT 우회 시도 포함), 탈퇴 직후 조회/전송/읽음처리 거부, 동시 재전송 시 1건만 저장, 빈 메시지·길이 초과 거부, 팀장 위임·팀 확정 시스템 메시지. E2E(`tests/e2e/chat-flow.spec.ts`, 독립 브라우저 컨텍스트 2개) — student1↔student2 실시간 송수신 → 새로고침 후 내역 복구 → 안 읽은 수 증가/소멸 → student2 탈퇴 후 메시지 미수신(재방문 시 접근 거부로 확인). `/chat`, `/chat/[roomId]`를 360px/1440px로 스크린샷 확인 — 가로 스크롤 없음, 링크 렌더링·배지·멤버 요약이 레이아웃 깨짐 없이 표시됨.
+- **앱 내 알림 (커밋 예정, 이 커밋):** `/notifications`(목록, 개별/모두 읽음 처리, 관련 파티·채팅으로 이동하는 링크), `/me`에 안 읽은 수 배지가 달린 "알림" 진입 링크 추가, 하단 탭 "마이"에도 같은 배지를 표시한다(`nav-badges.ts`를 `getNavBadgeCounts()`로 확장). 새 채팅 알림은 메시지마다 쌓지 않고 `dedupe_key = 'chat_new_message:' + chat_room_id`로 방 단위로 묶이며(4-A 1/3에서 이미 구현), 채팅방을 보고 있는 동안은 생성되지 않는다(근사 구현, 11.3절 참조). 북마크 활동 마감 임박 알림은 스케줄 워커가 필요해 4-B로 미룬다(요청 범위 그대로).
+- **검증:** 통합 테스트 — `tests/rls/chat.test.ts`(6건: 승인 즉시 조회/전송 가능 + 합류 시스템 메시지, 다른 팀 멤버의 조회/전송 거부(직접 테이블 INSERT 우회 시도 포함), 탈퇴 직후 조회/전송/읽음처리 거부, 동시 재전송 시 1건만 저장, 빈 메시지·길이 초과 거부, 팀장 위임·팀 확정 시스템 메시지), `tests/rls/notifications.test.ts`(3건: 본인 알림만 읽음 처리 가능, `mark_all_notifications_read`가 본인 것만 처리, 직접 UPDATE 거부). E2E(`tests/e2e/chat-flow.spec.ts`, 독립 브라우저 컨텍스트 2개) — student1↔student2 실시간 송수신 → 새로고침 후 내역 복구 → 안 읽은 수 증가/소멸 → student2 탈퇴 후 메시지 미수신(재방문 시 접근 거부로 확인). `/chat`, `/chat/[roomId]`, `/notifications`, `/me`를 360px/1440px로 스크린샷 확인 — 가로 스크롤 없음, 링크 렌더링·배지·멤버 요약·알림 목록이 레이아웃 깨짐 없이 표시됨.
 
 ## 2-B 산출물
 
@@ -46,14 +46,15 @@
 
 | 명령 | 결과 |
 |---|---|
-| `npx supabase db reset` | 성공, 오류 없음 (마이그레이션 14개 전체 적용 + 시드, 3단계 보완 마이그레이션 `20261003150000` 포함) |
+| `npx supabase db reset` | 성공, 오류 없음 (마이그레이션 16개 전체 적용 + 시드, 4-A 마이그레이션 `20261003160000`/`20261003161000` 포함) |
 | `npm run lint` | 성공, 0 problems |
 | `npm run typecheck` (`next typegen && tsc --noEmit`) | 성공 |
-| `npm test` (Vitest: 단위 24건 + RLS/통합 38건) | **62/62 통과** (역할 슬롯·활동당 활성 멤버 1파티 동시성 테스트 7건 포함 — `tests/rls/party_lifecycle.test.ts`) |
-| `npm run build` | 성공 (`/parties/[id]/edit` 라우트 포함 17개 라우트 생성) |
-| `npx playwright test` (E2E, 프로덕션 빌드 대상, 4건) | **4/4 통과** — student1 역할 2개로 파티 생성(기획/개발)→student2가 개발 역할로 지원→승인 플로우 포함 |
+| `npm test` (Vitest: 단위 42건 + RLS/통합 33건) | **75/75 통과** (채팅 6건 `tests/rls/chat.test.ts`, 알림 3건 `tests/rls/notifications.test.ts`, 링크 분리 4건 `tests/unit/chat.test.ts` 포함) |
+| `npm run build` | 성공 (`/chat`, `/chat/[roomId]`, `/notifications` 라우트 포함 20개 라우트 생성) |
+| `npx playwright test` (E2E, 프로덕션 빌드 대상, 5건) | **5/5 통과** — 채팅 실시간 송수신/새로고침 복구/안 읽은 수/탈퇴 후 접근 차단 시나리오(`chat-flow.spec.ts`) 포함 |
 | 360px/1440px 스크린샷 확인 (홈/활동탐색/활동상세/로그인) | 가로 스크롤 없음, 필터·카드·폼이 레이아웃 깨짐 없이 축소·중앙정렬됨 |
 | 360px/1440px 스크린샷 확인 (`/parties`, `/parties/new`, `/parties/[id]`, `/parties/[id]/edit` — 3단계 보완) | 가로 스크롤 없음, 역할별 인원 입력 행·역할 현황("개발 0/2 · 기획 1/1 · 디자인 0/1")·부족한 역할 안내·정보 수정 폼이 두 뷰포트 모두에서 레이아웃 깨짐 없이 표시됨 |
+| 360px/1440px 스크린샷 확인 (`/chat`, `/chat/[roomId]`, `/notifications`, `/me` — 4-A) | 가로 스크롤 없음, 채팅 버블·링크 렌더링·멤버 요약·안 읽은 배지·알림 목록이 두 뷰포트 모두에서 레이아웃 깨짐 없이 표시됨 |
 
 ## 2-B 작업 중 발견하고 고친 버그 (실제 영향이 있던 것들)
 
@@ -63,18 +64,25 @@
 4. **`.claude/` 상태줄 훅이 `npx @claude-flow/cli hooks statusline --json` 프로세스를 정리하지 않고 계속 쌓음.** 디버깅 중 node 프로세스 46개가 좀비로 남아있는 것을 발견(이 프로젝트와 무관한 Ruflo 툴링 문제). 정리했고, Claude Code에 피드백으로 남겨뒀다(제품 이슈이며 이 저장소 코드와는 무관).
 5. (2-A에서 이미 기록) 시드 스크립트의 활동 선택 쿼리 동점 문제, 마이그레이션 함수 정의 순서 — 둘 다 2-A 때 수정 완료.
 
+## 4-A단계에서 발견하고 고친 버그
+
+1. **"private 채널 + postgres_changes" Realtime 설계가 애초에 동작하지 않았음.** 처음 설계는 `chat_messages`를 `supabase_realtime` 발행에 추가하고 클라이언트가 `{ config: { private: true } }` + `postgres_changes`로 구독하는 것이었다. 로컬 스택에서 독립된 두 브라우저 컨텍스트로 실제 송수신을 검증하다가 메시지가 전혀 전달되지 않는 것을 발견했다. 원인: Supabase 공식 문서에 "private 채널 옵션은 Postgres Changes에는 적용되지 않는다"고 명시돼 있고, private 채널은 `realtime.messages` 테이블의 RLS로 "채널 구독 자체"를 인가하는데 이 테이블에 정책이 하나도 없으면(로컬 스택 기본값) 누구도 조인하지 못한다 — 구독이 거부돼 이벤트가 전달되지 않았다. **수정:** Broadcast-from-Database로 교체(`chat_messages` AFTER INSERT 트리거가 `realtime.broadcast_changes()`로 브로드캐스트 + `realtime.messages`에 `is_party_member()` 기반 RLS 정책 추가, 마이그레이션 `20261003161000`). **검증:** 독립 Node 스크립트로 구독→전송→수신을 직접 확인한 뒤 `tests/e2e/chat-flow.spec.ts`로 재검증. `docs/architecture.md` 11.2절에 상세 기록.
+2. **채팅방을 읽고 바로 다른 화면으로 이동하면 "안 읽음" 배지가 늦게 지워짐.** 클라이언트 하트비트(`mark_chat_read` 비동기 호출)만 믿었더니, Playwright E2E에서 방을 읽자마자 `/chat` 목록으로 이동하는 시나리오에서 그 비동기 호출이 완료(커밋)되기 전에 페이지를 떠나 안 읽은 수가 그대로 남는 경우가 재현됐다. **수정:** 채팅방 서버 컴포넌트(`/chat/[roomId]/page.tsx`)가 메시지를 조회한 직후 `mark_chat_read`를 서버에서 바로 `await`해, 화면이 렌더링되기 전에 읽음 처리가 끝나도록 했다(클라이언트 하트비트는 "보고 있는 동안" 신호 용도로 계속 둔다).
+
 ## 알려진 제한 / 다음 단계로 미룬 것
 
 1. **추천 계산의 "활동기간·투입시간 적합성(duration_time_fit)" 항목은 항상 "미상"으로 처리된다.** `activities` 테이블에 "주당 필요 시간" 같은 비교 가능한 필드가 없어서다(설계상 가중치 15는 배정돼 있으나 비교 불가 데이터로 처리하는 것이 허위 정밀도보다 낫다고 판단). 실제 필드를 추가하려면 활동 등록 폼·CSV 가져오기 스키마도 함께 바꿔야 한다.
 2. ~~파티 역할 슬롯 배정 UI 없음~~ → **3단계 보완에서 해결.** 위 "3단계 보완" 절 참조.
 3. ~~파티 정보 수정 기능 없음~~ → **3단계 보완에서 해결** (`update_party_details()` + `/parties/[id]/edit`). 단, 역할 추가/삭제·이름 변경은 여전히 범위 밖이다(기존 역할의 인원 조정만 가능) — 위 "3단계 보완" 절의 "의도적으로 범위에서 뺀 것" 참조.
-4. ~~3단계 신규 화면 스크린샷 미재확인~~ → **3단계 보완에서 해결** (`/parties`, `/parties/new`, `/parties/[id]`, `/parties/[id]/edit`를 360px/1440px로 확인). 빠른 매칭(`matching_queue`/`match_proposals`)과 채팅 UI는 여전히 4단계 범위다.
+4. ~~3단계 신규 화면 스크린샷 미재확인~~ → **3단계 보완에서 해결** (`/parties`, `/parties/new`, `/parties/[id]`, `/parties/[id]/edit`를 360px/1440px로 확인). 채팅 UI는 4-A에서 해결했고, 빠른 매칭(`matching_queue`/`match_proposals`)은 여전히 4-B 범위다.
 5. **매칭 확정 워커 없음** (2-A와 동일 — 아직 4단계 범위).
 6. ~~파티 공동 멤버 간 상호 조회는 2-B에서 해결했지만, "채팅 참가자 목록" 같은 파생 조회 UI는 아직 없다~~ → **4-A에서 해결.** `/chat/[roomId]`가 멤버 목록(닉네임·팀장 여부·역할)을 보여준다.
 7. **CSV 가져오기는 `activity_type` 이름 정확히 일치만 연결**하고 fuzzy 매칭은 하지 않는다. 운영자가 이름을 맞추거나 가져온 뒤 수정 화면에서 보정해야 한다.
 8. **프로필 "다른 사용자에게 공개" 범위가 좁다.** `profile_majors`/`profile_interests`/`profile_skills`/`availability_slots`는 RLS상 본인·운영자만 조회 가능 — 추천 계산(서버에서 본인 데이터만 읽으므로 문제없음)에는 지장이 없지만, "팀원 프로필 보기" 같은 화면이 생기면 RLS 정책을 넓히거나 전용 뷰/함수가 필요하다.
 9. **npm 취약점 1건(개발 의존성, high)** — `eslint-config-next`가 의존하는 `fast-glob`→`micromatch`→`braces`(GHSA-vfj7-8cjw-p6xm). `npm audit fix --force`는 Next 16과 불호환되는 `eslint-config-next@14.2.35`로 내려가므로 적용하지 않음. 런타임/배포 번들에는 포함되지 않는 린트 전용 devDependency.
 10. **상명대 이메일 도메인/전공 전체 목록/에브리타임 공식 연동 미확인** — 1단계 기록 그대로. `app_settings.allowed_email_domains`와 `majors` 테이블이 운영자 편집 가능하므로 값만 갱신하면 된다.
+11. **"채팅방을 보고 있으면 알림을 만들지 않는다"는 정확한 presence 추적이 아니라 근사치다(4-A).** 15초 하트비트 + 30초 신선도 판정을 쓰므로, 최악의 경우 방을 보고 있는 중에도 최대 약 15~30초의 오차로 알림이 한 번 생성될 수 있다(반대로 막 나간 직후에는 생성되지 않을 수도 있음). 완벽한 해결은 Presence(`channel.track()`) 기반 실시간 재실 여부 추적이 필요하며, 이번 범위에서는 과도한 복잡도로 보류했다.
+12. **채팅 메시지에 파일/이미지 전송, 메시지 삭제·수정, 읽음 확인(누가 읽었는지) 기능은 없다** — 지시서 범위 밖(후속 확장 항목)이며 이번 4-A에서도 추가하지 않았다.
 
 ## 다음 명령 (사용자 승인 시)
 

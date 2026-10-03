@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { BottomNav } from "@/components/BottomNav";
-import { getChatUnreadTotal } from "@/lib/nav-badges";
+import { getNavBadgeCounts } from "@/lib/nav-badges";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -20,7 +20,7 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const chatUnread = await getChatUnreadTotal();
+  const { chatUnread, notificationUnread } = await getNavBadgeCounts();
 
   return (
     <html
@@ -29,7 +29,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="flex min-h-full flex-col bg-[var(--background)] pb-16">
         {children}
-        <BottomNav chatUnread={chatUnread} />
+        <BottomNav chatUnread={chatUnread} notificationUnread={notificationUnread} />
       </body>
     </html>
   );
