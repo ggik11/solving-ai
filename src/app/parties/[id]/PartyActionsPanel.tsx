@@ -77,6 +77,7 @@ export function PartyActionsPanel({
                 <select
                   value={applyRoleSlotId}
                   onChange={(e) => setApplyRoleSlotId(e.target.value)}
+                  aria-label="지원할 역할"
                   className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
                 >
                   <option value="">지원할 역할 선택</option>

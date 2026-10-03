@@ -42,7 +42,13 @@ test("student1 파티 생성 → student2 지원 → 승인 → 양쪽 '내 파�
 
     await leaderPage.goto(`/parties/new?activity=${activity.id}`);
     await leaderPage.getByLabel("파티 이름").fill(partyTitle);
-    await leaderPage.getByLabel(/정원/).fill("3");
+    // 기본 역할 입력 행 1개(기획, 정원 1)에 이어 역할을 하나 더 추가(개발, 정원 2).
+    await leaderPage.getByPlaceholder("역할 (예: 기획, 개발, 디자인)").first().fill("기획");
+    await leaderPage.getByRole("button", { name: "역할 추가" }).click();
+    const roleNameInputs = leaderPage.getByPlaceholder("역할 (예: 기획, 개발, 디자인)");
+    await roleNameInputs.nth(1).fill("개발");
+    await leaderPage.getByLabel("개발 인원").fill("2");
+    await leaderPage.getByLabel("팀장이 맡을 역할 *").selectOption("기획");
     await leaderPage.getByRole("button", { name: "파티 만들기" }).click();
     await expect(leaderPage).toHaveURL(/\/parties\/[0-9a-f-]+$/);
     const partyUrl = leaderPage.url();
@@ -57,6 +63,7 @@ test("student1 파티 생성 → student2 지원 → 승인 → 양쪽 '내 파�
 
     await applicantPage.goto(partyUrl);
     await applicantPage.getByRole("button", { name: "이 파티에 지원하기" }).click();
+    await applicantPage.getByLabel("지원할 역할").selectOption({ label: "개발" });
     await applicantPage.getByRole("button", { name: "지원하기" }).click();
     await expect(applicantPage.getByRole("button", { name: "지원 취소" })).toBeVisible();
 
