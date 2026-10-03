@@ -50,18 +50,20 @@ npx supabase db reset
 ## 앱 실행
 
 ```bash
-npm run dev     # 개발 서버 (Turbopack)
-npm run build && npm run start   # 프로덕션 빌드로 실행
+npm run dev     # 개발 서버 (Turbopack), 평소 개발은 이걸로
+npm run build && npm run start   # 프로덕션 빌드로 실행 (배포 전 최종 확인용)
 ```
 
 http://127.0.0.1:3000 에서 접속합니다.
 
-> **참고:** 이 환경(샌드박스)에서는 `next dev`의 HMR 웹소켓 핸드셰이크가 실패해 클라이언트
-> 하이드레이션이 되지 않는 문제가 있었습니다. 로그인 폼처럼 자바스크립트 상호작용이 필요한
-> 화면이 반응하지 않으면 `npm run build && npm run start`(프로덕션 모드, HMR 없음)로
-> 실행해 보세요. Playwright E2E 테스트도 이 때문에 프로덕션 빌드를 대상으로 합니다
-> (`playwright.config.ts` 참고). 다른 환경(일반 로컬 PC)에서는 `npm run dev`가 정상 동작할
-> 가능성이 높습니다.
+> **참고(해결됨):** 한때 `next dev`가 `localhost`가 아닌 호스트(`127.0.0.1` 등)에서 오는
+> `_next/*` 자산 요청을 403으로 막아 클라이언트 번들이 부트스트랩되지 않고(로그인 폼 등
+> 자바스크립트 상호작용이 전혀 반응하지 않음) 하이드레이션이 되지 않는 문제가 있었습니다.
+> `next.config.ts`의 `allowedDevOrigins: ["127.0.0.1", "localhost"]`로 해결했고, 지금은
+> `npm run dev`로도 정상적으로 하이드레이션됩니다. Playwright E2E는 여전히 프로덕션 빌드
+> (`npm run build && npm run start`)를 대상으로 합니다(`playwright.config.ts` 참고) — 배포
+> 산출물과 동일한 환경에서 검증하기 위함이며, 더 이상 dev 서버의 제약을 피하기 위한 것은
+> 아닙니다.
 
 ## 테스트 계정 (시드 데이터)
 
