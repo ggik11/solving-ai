@@ -17,6 +17,11 @@ interface OtherMember {
   nickname: string;
 }
 
+interface OpenRoleSlot {
+  id: string;
+  roleName: string;
+}
+
 export function PartyActionsPanel({
   partyId,
   status,
@@ -24,6 +29,7 @@ export function PartyActionsPanel({
   isMember,
   myPendingApplicationId,
   otherActiveMembers,
+  openRoleSlots,
 }: {
   partyId: string;
   status: string;
@@ -31,11 +37,13 @@ export function PartyActionsPanel({
   isMember: boolean;
   myPendingApplicationId: string | null;
   otherActiveMembers: OtherMember[];
+  openRoleSlots: OpenRoleSlot[];
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [applyMessage, setApplyMessage] = useState("");
+  const [applyRoleSlotId, setApplyRoleSlotId] = useState("");
   const [showApplyForm, setShowApplyForm] = useState(false);
   const [delegateTarget, setDelegateTarget] = useState("");
 
@@ -60,32 +68,49 @@ export function PartyActionsPanel({
         </p>
       )}
 
-      {/* 비멤버: 모집 중일 때 지원 */}
+      {/* 비멤버: 모집 중일 때 지원 (빈 슬롯이 있는 역할만 선택 가능) */}
       {!isMember && !myPendingApplicationId && status === "recruiting" && (
         <div className="flex flex-col gap-2">
           {showApplyForm ? (
-            <>
-              <textarea
-                value={applyMessage}
-                onChange={(e) => setApplyMessage(e.target.value)}
-                placeholder="팀장에게 보낼 메시지 (선택)"
-                rows={3}
-                className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
-              />
-              <button
-                type="button"
-                disabled={isPending}
-                onClick={() => run(() => applyToPartyAction(partyId, applyMessage))}
-                className="rounded-md bg-[var(--color-brand-600)] px-4 py-2.5 text-sm font-medium text-white disabled:opacity-60"
-              >
-                지원하기
-              </button>
-            </>
+            openRoleSlots.length > 0 ? (
+              <>
+                <select
+                  value={applyRoleSlotId}
+                  onChange={(e) => setApplyRoleSlotId(e.target.value)}
+                  className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
+                >
+                  <option value="">지원할 역할 선택</option>
+                  {openRoleSlots.map((slot) => (
+                    <option key={slot.id} value={slot.id}>
+                      {slot.roleName}
+                    </option>
+                  ))}
+                </select>
+                <textarea
+                  value={applyMessage}
+                  onChange={(e) => setApplyMessage(e.target.value)}
+                  placeholder="팀장에게 보낼 메시지 (선택)"
+                  rows={3}
+                  className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
+                />
+                <button
+                  type="button"
+                  disabled={isPending || !applyRoleSlotId}
+                  onClick={() => run(() => applyToPartyAction(partyId, applyRoleSlotId, applyMessage))}
+                  className="rounded-md bg-[var(--color-brand-600)] px-4 py-2.5 text-sm font-medium text-white disabled:opacity-60"
+                >
+                  지원하기
+                </button>
+              </>
+            ) : (
+              <p className="text-sm text-[var(--color-muted-foreground)]">현재 지원 가능한 역할이 없어요.</p>
+            )
           ) : (
             <button
               type="button"
               onClick={() => setShowApplyForm(true)}
-              className="rounded-md bg-[var(--color-brand-600)] px-4 py-2.5 text-sm font-medium text-white"
+              disabled={openRoleSlots.length === 0}
+              className="rounded-md bg-[var(--color-brand-600)] px-4 py-2.5 text-sm font-medium text-white disabled:opacity-60"
             >
               이 파티에 지원하기
             </button>

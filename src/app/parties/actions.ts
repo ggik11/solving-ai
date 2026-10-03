@@ -13,13 +13,19 @@ function friendlyError(error: { message: string } | null, fallback: string): str
   return idx >= 0 ? error.message.slice(idx + 2) : error.message;
 }
 
+export interface RoleSlotInput {
+  roleName: string;
+  capacity: number;
+}
+
 export interface CreatePartyInput {
   activityId: string;
   title: string;
   description: string;
-  capacity: number;
   meetingMode: "online" | "offline" | "hybrid" | null;
   recruitDeadline: string | null; // ISO or ""
+  roleSlots: RoleSlotInput[];
+  leaderRoleName: string;
 }
 
 export async function createPartyAction(input: CreatePartyInput): Promise<ActionResult> {
@@ -31,9 +37,10 @@ export async function createPartyAction(input: CreatePartyInput): Promise<Action
     p_activity_id: input.activityId,
     p_title: input.title,
     p_description: input.description,
-    p_capacity: input.capacity,
     p_meeting_mode: input.meetingMode,
     p_recruit_deadline: input.recruitDeadline || null,
+    p_role_slots: input.roleSlots.map((r) => ({ role_name: r.roleName, capacity: r.capacity })),
+    p_leader_role_name: input.leaderRoleName,
   });
 
   if (error || !partyId) {
@@ -45,9 +52,13 @@ export async function createPartyAction(input: CreatePartyInput): Promise<Action
   redirect(`/parties/${partyId}`);
 }
 
-export async function applyToPartyAction(partyId: string, message: string): Promise<ActionResult> {
+export async function applyToPartyAction(partyId: string, roleSlotId: string, message: string): Promise<ActionResult> {
   const supabase = await createClient();
-  const { error } = await supabase.rpc("apply_to_party", { p_party_id: partyId, p_message: message || null });
+  const { error } = await supabase.rpc("apply_to_party", {
+    p_party_id: partyId,
+    p_role_slot_id: roleSlotId,
+    p_message: message || null,
+  });
   if (error) return { ok: false, error: friendlyError(error, "지원에 실패했습니다.") };
 
   revalidatePath(`/parties/${partyId}`);
@@ -135,6 +146,35 @@ export async function reopenPartyAction(partyId: string): Promise<ActionResult> 
   if (error) return { ok: false, error: friendlyError(error, "재모집 시작에 실패했습니다.") };
 
   revalidatePath(`/parties/${partyId}`);
+  revalidatePath("/parties");
+  return { ok: true };
+}
+
+export interface UpdatePartyDetailsInput {
+  partyId: string;
+  title: string;
+  description: string;
+  meetingMode: "online" | "offline" | "hybrid" | null;
+  recruitDeadline: string | null;
+  requiredCommonTime: string; // 자유 형식 텍스트 → {"note": text} 로 저장
+  roleSlotCapacities: { roleSlotId: string; capacity: number }[];
+}
+
+export async function updatePartyDetailsAction(input: UpdatePartyDetailsInput): Promise<ActionResult> {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("update_party_details", {
+    p_party_id: input.partyId,
+    p_title: input.title,
+    p_description: input.description,
+    p_meeting_mode: input.meetingMode,
+    p_recruit_deadline: input.recruitDeadline || null,
+    p_required_common_time: input.requiredCommonTime.trim() ? { note: input.requiredCommonTime.trim() } : null,
+    p_role_slot_capacities: input.roleSlotCapacities.map((r) => ({ role_slot_id: r.roleSlotId, capacity: r.capacity })),
+  });
+  if (error) return { ok: false, error: friendlyError(error, "파티 정보 수정에 실패했습니다.") };
+
+  revalidatePath(`/parties/${input.partyId}`);
+  revalidatePath(`/parties/${input.partyId}/edit`);
   revalidatePath("/parties");
   return { ok: true };
 }

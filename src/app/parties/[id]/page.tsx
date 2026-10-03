@@ -5,7 +5,14 @@ import { PageContainer } from "@/components/PageContainer";
 import { Badge } from "@/components/Badge";
 import { EmptyState } from "@/components/states";
 import { formatKst } from "@/lib/format";
-import { APPLICATION_STATUS_LABEL, PARTY_STATUS_LABEL, partyStatusBadgeVariant } from "@/lib/party";
+import {
+  APPLICATION_STATUS_LABEL,
+  PARTY_STATUS_LABEL,
+  formatRoleSlotSummary,
+  missingRoleNames,
+  partyStatusBadgeVariant,
+  type RoleSlotSummary,
+} from "@/lib/party";
 import { PartyActionsPanel } from "./PartyActionsPanel";
 import { ApplicationDecisionButtons } from "./ApplicationDecisionButtons";
 
@@ -28,15 +35,18 @@ interface MemberRow {
   is_confirmed: boolean;
   joined_at: string;
   profiles: { nickname: string } | null;
+  party_role_slots: { role_name: string } | null;
 }
 
 interface ApplicationRow {
   id: string;
   profile_id: string;
+  role_slot_id: string | null;
   message: string | null;
   status: string;
   created_at: string;
   profiles: { nickname: string } | null;
+  party_role_slots: { role_name: string } | null;
 }
 
 const MEETING_MODE_LABEL: Record<string, string> = { online: "온라인", offline: "오프라인", hybrid: "혼합" };
@@ -59,10 +69,10 @@ export default async function PartyDetailPage({ params }: { params: Promise<{ id
     notFound();
   }
 
-  const [membersRes, myApplicationRes] = await Promise.all([
+  const [membersRes, myApplicationRes, roleSlotsRes] = await Promise.all([
     supabase
       .from("party_members")
-      .select("profile_id, is_leader, is_confirmed, joined_at, profiles(nickname)")
+      .select("profile_id, is_leader, is_confirmed, joined_at, profiles(nickname), party_role_slots(role_name)")
       .eq("party_id", id)
       .eq("status", "active")
       .order("is_leader", { ascending: false })
@@ -70,22 +80,30 @@ export default async function PartyDetailPage({ params }: { params: Promise<{ id
       .returns<MemberRow[]>(),
     supabase
       .from("party_applications")
-      .select("id")
+      .select("id, role_slot_id")
       .eq("party_id", id)
       .eq("profile_id", user.id)
       .eq("status", "pending")
       .maybeSingle(),
+    supabase
+      .from("party_role_slots")
+      .select("id, role_name, capacity, filled_count")
+      .eq("party_id", id)
+      .order("role_name", { ascending: true })
+      .returns<RoleSlotSummary[]>(),
   ]);
 
   const members = membersRes.data ?? [];
+  const roleSlots = roleSlotsRes.data ?? [];
   const isLeader = party.leader_id === user.id;
   const isMember = members.some((m) => m.profile_id === user.id);
   const myPendingApplicationId = myApplicationRes.data?.id ?? null;
+  const openRoleSlots = roleSlots.filter((s) => s.filled_count < s.capacity);
 
   const applicationsRes = isLeader
     ? await supabase
         .from("party_applications")
-        .select("id, profile_id, message, status, created_at, profiles(nickname)")
+        .select("id, profile_id, role_slot_id, message, status, created_at, profiles(nickname), party_role_slots(role_name)")
         .eq("party_id", id)
         .eq("status", "pending")
         .order("created_at", { ascending: true })
@@ -112,14 +130,28 @@ export default async function PartyDetailPage({ params }: { params: Promise<{ id
         )}
       </div>
 
-      <h1 className="mb-1 text-xl font-semibold">{party.title ?? "제목 없는 파티"}</h1>
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <h1 className="text-xl font-semibold">{party.title ?? "제목 없는 파티"}</h1>
+        {isLeader && party.status !== "cancelled" && party.status !== "completed" && (
+          <Link href={`/parties/${party.id}/edit`} className="shrink-0 text-sm text-[var(--color-brand-700)] underline">
+            정보 수정
+          </Link>
+        )}
+      </div>
       {party.description && <p className="mb-4 text-sm whitespace-pre-wrap">{party.description}</p>}
 
       <section className="mb-4 flex flex-col gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm">
         <Row label="정원" value={`${members.length} / ${party.capacity}명`} />
+        {roleSlots.length > 0 && <Row label="역할별 현황" value={formatRoleSlotSummary(roleSlots)} />}
         {party.meeting_mode && <Row label="진행 방식" value={MEETING_MODE_LABEL[party.meeting_mode] ?? party.meeting_mode} />}
         {party.recruit_deadline && <Row label="모집 마감" value={formatKst(party.recruit_deadline)} />}
       </section>
+
+      {party.status === "recruiting" && missingRoleNames(roleSlots).length > 0 && (
+        <p className="mb-4 text-xs text-[var(--color-muted-foreground)]">
+          부족한 역할: {missingRoleNames(roleSlots).join(", ")}
+        </p>
+      )}
 
       <section className="mb-4">
         <h2 className="mb-2 text-sm font-semibold text-[var(--color-muted-foreground)]">멤버</h2>
@@ -129,7 +161,12 @@ export default async function PartyDetailPage({ params }: { params: Promise<{ id
               key={m.profile_id}
               className="flex items-center justify-between rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
             >
-              <span>{m.profiles?.nickname ?? "멤버"}</span>
+              <span>
+                {m.profiles?.nickname ?? "멤버"}
+                {m.party_role_slots && (
+                  <span className="ml-1.5 text-xs text-[var(--color-muted-foreground)]">{m.party_role_slots.role_name}</span>
+                )}
+              </span>
               <div className="flex items-center gap-1.5">
                 {m.is_leader && <Badge variant="info">팀장</Badge>}
                 {m.is_confirmed && <Badge variant="success">확정</Badge>}
@@ -150,7 +187,12 @@ export default async function PartyDetailPage({ params }: { params: Promise<{ id
                   className="flex items-start justify-between gap-3 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm"
                 >
                   <div>
-                    <p className="font-medium">{app.profiles?.nickname ?? "지원자"}</p>
+                    <p className="font-medium">
+                      {app.profiles?.nickname ?? "지원자"}
+                      {app.party_role_slots && (
+                        <span className="ml-1.5 text-xs text-[var(--color-muted-foreground)]">{app.party_role_slots.role_name}</span>
+                      )}
+                    </p>
                     {app.message && <p className="mt-0.5 text-xs text-[var(--color-muted-foreground)]">{app.message}</p>}
                   </div>
                   <ApplicationDecisionButtons applicationId={app.id} partyId={party.id} />
@@ -176,6 +218,7 @@ export default async function PartyDetailPage({ params }: { params: Promise<{ id
         isMember={isMember}
         myPendingApplicationId={myPendingApplicationId}
         otherActiveMembers={otherActiveMembers}
+        openRoleSlots={openRoleSlots.map((s) => ({ id: s.id, roleName: s.role_name }))}
       />
     </PageContainer>
   );

@@ -4,7 +4,7 @@ import { getCurrentUserAndProfile } from "@/lib/auth";
 import { PageContainer } from "@/components/PageContainer";
 import { Badge } from "@/components/Badge";
 import { EmptyState } from "@/components/states";
-import { PARTY_STATUS_LABEL, partyStatusBadgeVariant } from "@/lib/party";
+import { PARTY_STATUS_LABEL, formatRoleSlotSummary, partyStatusBadgeVariant, type RoleSlotSummary } from "@/lib/party";
 
 interface PartyMembershipRow {
   party_id: string;
@@ -15,6 +15,7 @@ interface PartyMembershipRow {
     status: string;
     capacity: number;
     activities: { title: string } | null;
+    party_role_slots: RoleSlotSummary[];
   } | null;
 }
 
@@ -34,7 +35,9 @@ export default async function PartiesPage() {
   const [membershipsRes, applicationsRes] = await Promise.all([
     supabase
       .from("party_members")
-      .select("party_id, is_leader, parties(id, title, status, capacity, activities(title))")
+      .select(
+        "party_id, is_leader, parties(id, title, status, capacity, activities(title), party_role_slots(id, role_name, capacity, filled_count))"
+      )
       .eq("profile_id", user.id)
       .eq("status", "active")
       .returns<PartyMembershipRow[]>(),
@@ -108,12 +111,19 @@ function PartyList({ items }: { items: PartyMembershipRow[] }) {
           <li key={item.party_id}>
             <Link
               href={`/parties/${party.id}`}
-              className="flex items-center justify-between gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm"
+              className="flex flex-col gap-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm"
             >
-              <span>
-                {party.activities?.title ?? "활동"} · {party.title ?? "파티"}
-              </span>
-              <Badge variant={partyStatusBadgeVariant(party.status)}>{PARTY_STATUS_LABEL[party.status] ?? party.status}</Badge>
+              <div className="flex items-center justify-between gap-2">
+                <span>
+                  {party.activities?.title ?? "활동"} · {party.title ?? "파티"}
+                </span>
+                <Badge variant={partyStatusBadgeVariant(party.status)}>{PARTY_STATUS_LABEL[party.status] ?? party.status}</Badge>
+              </div>
+              {party.party_role_slots.length > 0 && (
+                <span className="text-xs text-[var(--color-muted-foreground)]">
+                  {formatRoleSlotSummary(party.party_role_slots)}
+                </span>
+              )}
             </Link>
           </li>
         );
