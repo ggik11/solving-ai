@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { BottomNav } from "@/components/BottomNav";
+import { getChatUnreadTotal } from "@/lib/nav-badges";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -18,7 +19,9 @@ export const metadata: Metadata = {
   description: "상명대학교 서울캠퍼스 학생을 위한 대외활동 추천·파티 매칭 서비스 (비공식 데모)",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  const chatUnread = await getChatUnreadTotal();
+
   return (
     <html
       lang="ko"
@@ -26,7 +29,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="flex min-h-full flex-col bg-[var(--background)] pb-16">
         {children}
-        <BottomNav />
+        <BottomNav chatUnread={chatUnread} />
       </body>
     </html>
   );

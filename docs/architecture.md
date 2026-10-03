@@ -296,6 +296,43 @@ score = 100 × Σ(weight_i × compatibility_i) / Σ(valid_weight_i)
 
 ---
 
+## 11. 4-A단계: 팀 채팅 · 앱 내 알림 구현
+
+### 11.1 쓰기 경로 — 모두 DB 함수를 거친다
+
+3단계 파티 함수와 같은 원칙을 그대로 따른다: `chat_messages`/`chat_read_states`/`notifications`의 INSERT·UPDATE RLS를 운영자 전용으로 좁히고, 일반 사용자는 반드시 다음 SECURITY DEFINER 함수를 거치게 한다.
+
+- `send_chat_message(chat_room_id, client_message_id, body)` — 활성 멤버인지 확인, 본문 1~2000자 검증, 분당 전송 빈도 제한(`app_settings.chat_rate_limits`), `client_message_id` 기준 멱등 재시도(이미 저장된 메시지가 있으면 새로 만들지 않고 그 id를 그대로 반환 — 동시 재시도 경쟁도 `on conflict ... do nothing` + 재조회로 안전하게 처리), 전송 성공 시 같은 파티의 다른 활성 멤버에게 "방 단위" 알림을 upsert(11.3절 참고).
+- `mark_chat_read(chat_room_id, last_read_message_id)` — `chat_read_states`를 upsert하고, 그 방의 `chat_new_message` 알림을 읽음 처리한다. 멤버가 아니면(탈퇴/강퇴) `NOT_A_MEMBER`로 거부한다 — 클라이언트가 이 에러로 "더 이상 접근할 수 없음"을 감지한다(11.4절).
+- `list_my_chat_rooms()` — `/chat` 목록이 필요한 모든 것(상대/파티 제목, 마지막 메시지, 안 읽은 수)을 한 번에 주는 조회 함수. 기존 테이블 SELECT RLS를 그대로 타도록 SECURITY INVOKER(기본값)로 둔다.
+- `mark_notification_read` / `mark_all_notifications_read` — 알림 읽음 처리.
+- 합류(지원 승인)·탈퇴·팀장 위임·팀 확정 시 기존 파티 함수(`approve_application`/`leave_party`/`delegate_leader`/`confirm_party`)가 `insert_system_chat_message()` 헬퍼로 시스템 메시지(`sender_id = null`, `message_type = 'system'`)를 자동으로 남긴다.
+
+### 11.2 Realtime 전달 — Broadcast-from-Database (postgres_changes가 아님)
+
+처음에는 `chat_messages`를 `supabase_realtime` 발행에 추가하고 클라이언트가 `{ config: { private: true } }` + `postgres_changes` 구독으로 받는 설계였다. **로컬 스택에서 실제로 두 브라우저 컨텍스트로 검증하다가 이 설계가 동작하지 않음을 발견했다**: Supabase 공식 문서에 "`private` 채널 옵션은 Postgres Changes에는 적용되지 않는다"고 명시되어 있고, `private` 채널은 `realtime.messages` 테이블에 대한 RLS로 "채널 구독(조인) 자체"를 인가하는데 이 테이블에 정책이 하나도 없으면(로컬 스택 기본값) 아무도 private 채널에 조인하지 못한다 — 구독 자체가 거부되어 어떤 이벤트도 전달되지 않았다.
+
+대신 **Broadcast-from-Database**를 쓴다(`supabase/migrations/20261003161000_chat_realtime_broadcast.sql`):
+1. `chat_messages` AFTER INSERT 트리거(`chat_messages_broadcast`)가 `realtime.broadcast_changes()`로 새 행을 `'chat_room:<chat_room_id>'` 토픽에 `'new_message'` 이벤트로 브로드캐스트한다(시스템 메시지도 같은 테이블에 insert되므로 동일하게 전달된다).
+2. `realtime.messages`에 RLS 정책을 걸어, 그 토픽이 가리키는 채팅방의 활성 멤버(`is_party_member()`)만 수신(SELECT)할 수 있게 한다.
+3. 클라이언트는 `{ config: { private: true } }` 채널로 `'new_message'` broadcast 이벤트를 구독한다(`ChatRoomClient.tsx`). 탈퇴/강퇴된 사용자는 `is_party_member`가 더 이상 참이 아니므로 이 RLS가 막아 이후 메시지를 받지 못한다 — 화면에서 버튼을 숨기는 것이 아니라 DB 정책 수준의 통제다.
+4. Broadcast는 과거 이벤트를 재생하지 않는다. 채널이 (재)연결되어 `SUBSCRIBED` 상태가 될 때마다 마지막으로 알고 있는 메시지 이후를 `loadNewerMessagesAction`으로 한 번 따라잡아, 구독이 끊겨 있던 짧은 틈(인증 재시도 등) 사이에 온 메시지를 놓치지 않게 한다.
+
+### 11.3 알림 — 방 단위로 묶고, 보고 있으면 만들지 않는다
+
+- **방 단위 묶음**: 새 메시지 알림의 `dedupe_key`는 `'chat_new_message:' || chat_room_id` (메시지 id를 포함하지 않음)이다. `on conflict (profile_id, dedupe_key) do update`로 upsert하므로, 연속된 안 읽은 메시지는 알림 1건만 유지하며 내용/시각만 최신으로 갱신된다. 사용자가 읽으면(`mark_chat_read`) 그 알림의 `read_at`이 설정되고, 이후 새 메시지가 오면 `read_at = null`로 되살아나 다시 "안 읽음"이 된다.
+- **보고 있으면 생성하지 않음**: 완벽한 실시간 presence 추적 없이 근사치로 구현한다. 채팅방 화면이 열려 있는 동안 15초 주기(+ 탭이 다시 보일 때, + 메시지를 받을 때)로 `mark_chat_read`를 호출하는 하트비트를 둔다. `send_chat_message`는 알림을 만들기 전에 수신자의 `chat_read_states.last_read_at`이 30초 이내인지 확인하고, 그렇다면("최근에 활동 중") 알림을 만들지 않는다. 최대 약 30초의 오차가 있을 수 있지만, 하트비트를 멈추면(탭을 닫거나 다른 화면으로 이동) 금방 다시 알림 대상이 된다.
+
+### 11.4 탈퇴·강퇴 시 접근 차단 — "이미 열려 있는 연결"까지
+
+- **조회/전송**: `chat_messages`/`chat_rooms`/`chat_read_states`의 SELECT·함수 내부 검증이 모두 `party_members.status = 'active'`를 확인한다. 탈퇴 즉시 거부된다(`tests/rls/chat.test.ts`로 검증).
+- **Realtime 수신**: 11.2절의 `realtime.messages` RLS가 `is_party_member()`를 쓰므로, 탈퇴 이후의 새 브로드캐스트는 애초에 그 사용자에게 전달되지 않는다.
+- **이미 열려 있던 연결**: 브라우저 탭을 이미 열어 둔 채로 탈퇴/강퇴를 당한 경우까지 방어하기 위해, `ChatRoomClient`의 하트비트가 매번 `mark_chat_read`를 호출하고 그 응답이 `NOT_A_MEMBER`이면 즉시 `subscribedRef`를 끊고(이후 들어오는 브로드캐스트를 무시) "더 이상 접근할 수 없음" 상태로 전환한다. 다시 그 방을 방문(새로고침)하면 서버 컴포넌트가 멤버십을 재확인해 `notFound()`로 막는다. Realtime 서버 자체도 구독 인가를 주기적으로 재검사하지만(접속 유지 중 JWT 갱신 시점 등), 정확한 재검사 주기를 제품 코드가 의존하기엔 불확실하므로 하트비트 쪽을 1차 방어선으로 둔다.
+
+### 11.5 메시지 본문 — 텍스트와 안전한 링크만
+
+메시지는 항상 일반 텍스트 노드로 렌더링한다(`dangerouslySetInnerHTML`을 쓰지 않음) — 그래서 어떤 입력이 와도 HTML/스크립트는 절대 실행되지 않는다. `http(s)://`로 시작하는 URL만 `splitMessageSegments()`(순수 함수, 단위 테스트 있음)로 분리해 `<a>` 링크로 바꾸고, 그 외 스킴(`javascript:` 등)은 그냥 텍스트로 남는다.
+
 ## 변경 이력
 
 - 2026-10-03: 1단계(설계) 초안 작성. 코드 없음.
@@ -303,3 +340,4 @@ score = 100 × Σ(weight_i × compatibility_i) / Σ(valid_weight_i)
   1. **채팅방 생성 시점 수정** (4장, 5.1절, 5.2절, 6장): 수동 파티는 파티 생성(또는 첫 승인) 시점에 `chat_rooms`를 1개 생성하고, 지원이 승인된 멤버는 파티가 `recruiting`/`full`이어도 즉시 채팅 권한을 받도록 변경(지시서 7장 A). `confirmed`는 팀 확정 상태일 뿐 채팅 조건이 아님을 명시.
   2. **매칭 팀 통합** (4장, 5.1절, 5.4절): 빠른 매칭 제안이 `matched`로 전환되면 `parties`(`source='matching'`, `status='confirmed'`) + `party_role_slots` + `party_members`를 생성해 수동 파티와 동일한 테이블 구조를 쓰도록 변경. `chat_rooms`는 `parties`에만 1─1로 연결되도록 단순화. "활동당 사용자별 확정 팀 1개"는 `party_members`에 `activity_id`를 비정규화하고 `UNIQUE(activity_id, profile_id) WHERE is_confirmed = true` 부분 인덱스로 두 경로 모두 보장.
   3. **엔티티 보완** (4장): 지시서 11장의 엔티티 수를 "22개"에서 실제 목록 기준 "24개"로 정정(집계 오류 수정)하고, 운영/설정 그룹으로 `majors`(운영자 편집 가능, `is_demo` 플래그), `app_settings`(허용 이메일 도메인, 추천 가중치, 매칭 수락 기한), `user_roles`(관리자 권한, 프로필과 분리), `notifications.dedupe_key`(알림 중복 발송 방지 키)를 추가. 10장 2단계 완료 기준의 엔티티 수 표기도 동기화.
+- 2026-10-04: 4-A단계(팀 채팅 + 앱 내 알림) 구현. 11장 신설 — DB 함수 경유 쓰기, Realtime 전달 방식을 postgres_changes에서 Broadcast-from-Database로 변경한 이유와 설계(수동 검증으로 "private 채널은 Postgres Changes에 적용되지 않는다"는 사실을 발견), 알림 방 단위 묶음·"보고 있으면 생성 안 함" 근사 구현, 탈퇴·강퇴 시 접근 차단(이미 열려 있는 연결 포함) 메커니즘, 메시지 링크화 방식을 기록.

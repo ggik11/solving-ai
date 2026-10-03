@@ -11,7 +11,17 @@ const TABS = [
   { href: "/me", label: "마이", icon: "👤" },
 ] as const;
 
-export function BottomNav() {
+function badgeLabel(count: number) {
+  return count > 99 ? "99+" : String(count);
+}
+
+export function BottomNav({
+  chatUnread = 0,
+  notificationUnread = 0,
+}: {
+  chatUnread?: number;
+  notificationUnread?: number;
+}) {
   const pathname = usePathname();
 
   return (
@@ -22,6 +32,7 @@ export function BottomNav() {
       <div className="mx-auto flex w-full max-w-xl">
         {TABS.map((tab) => {
           const isActive = tab.href === "/" ? pathname === "/" : pathname.startsWith(tab.href);
+          const badgeCount = tab.href === "/chat" ? chatUnread : tab.href === "/me" ? notificationUnread : 0;
           return (
             <Link
               key={tab.href}
@@ -31,8 +42,13 @@ export function BottomNav() {
                 isActive ? "text-[var(--color-brand-700)] font-medium" : "text-[var(--color-muted-foreground)]"
               }`}
             >
-              <span aria-hidden="true" className="text-lg leading-none">
+              <span className="relative text-lg leading-none" aria-hidden="true">
                 {tab.icon}
+                {badgeCount > 0 && (
+                  <span className="absolute -right-2 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--color-danger)] px-1 text-[10px] font-semibold text-white">
+                    {badgeLabel(badgeCount)}
+                  </span>
+                )}
               </span>
               {tab.label}
             </Link>
