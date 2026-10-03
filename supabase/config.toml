@@ -161,7 +161,10 @@ site_url = "http://127.0.0.1:3000"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://127.0.0.1:3000"]
+# http(s) 혼용 오타(기존 "https://127.0.0.1:3000")를 수정하고, localhost로 접속하는 경우도
+# 매직링크 리다이렉트가 거부되지 않도록 같은 호스트의 http 버전을 추가했다. NEXT_PUBLIC_SITE_URL/
+# NEXT_PUBLIC_SITE_URL_ALIASES(.env.local)와 이 목록을 항상 같은 호스트 집합으로 맞춘다.
+additional_redirect_urls = ["http://127.0.0.1:3000", "http://localhost:3000"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
