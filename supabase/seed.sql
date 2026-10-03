@@ -1,0 +1,283 @@
+-- 개발/데모 시드. `supabase db reset` 시 매번 재실행된다. 전부 상대 날짜(now() 기준)로 생성해
+-- 마감/모집중/접수예정 상태를 재현한다. 실제 운영 데이터가 아니며 is_demo=true로 표시한다.
+
+-- ===========================================================================
+-- 1. 테스트 계정 (auth.users + profiles). 비밀번호 없는 매직링크 계정으로 생성한다.
+--    로그인은 README의 매직링크/OTP 절차 또는 테스트 하네스의 admin.generateLink로 확인한다.
+-- ===========================================================================
+do $$
+declare
+  v_instance_id uuid := '00000000-0000-0000-0000-000000000000';
+begin
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at, confirmation_token, email_change, email_change_token_new, recovery_token
+  ) values
+    (v_instance_id, 'a0000000-0000-0000-0000-000000000001', 'authenticated', 'authenticated', 'admin@smu.ac.kr', '',
+     now(), '{"provider":"email","providers":["email"]}', '{}', now(), now(), '', '', '', ''),
+    (v_instance_id, 'a0000000-0000-0000-0000-000000000002', 'authenticated', 'authenticated', 'student1@smu.ac.kr', '',
+     now(), '{"provider":"email","providers":["email"]}', '{}', now(), now(), '', '', '', ''),
+    (v_instance_id, 'a0000000-0000-0000-0000-000000000003', 'authenticated', 'authenticated', 'student2@smu.ac.kr', '',
+     now(), '{"provider":"email","providers":["email"]}', '{}', now(), now(), '', '', '', ''),
+    (v_instance_id, 'a0000000-0000-0000-0000-000000000004', 'authenticated', 'authenticated', 'student3@smu.ac.kr', '',
+     now(), '{"provider":"email","providers":["email"]}', '{}', now(), now(), '', '', '', ''),
+    (v_instance_id, 'a0000000-0000-0000-0000-000000000005', 'authenticated', 'authenticated', 'student4@smu.ac.kr', '',
+     now(), '{"provider":"email","providers":["email"]}', '{}', now(), now(), '', '', '', '')
+  on conflict (id) do nothing;
+
+  insert into auth.identities (id, user_id, provider_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
+  select gen_random_uuid(), u.id, u.id::text,
+         jsonb_build_object('sub', u.id::text, 'email', u.email),
+         'email', now(), now(), now()
+  from auth.users u
+  where u.id in (
+    'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000002',
+    'a0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000004',
+    'a0000000-0000-0000-0000-000000000005'
+  )
+  on conflict do nothing;
+end $$;
+
+-- handle_new_user 트리거가 profiles 행을 이미 만들어뒀으므로 UPDATE로 데모 값을 채운다.
+update public.profiles set nickname = '운영자데모', account_status = 'active', onboarding_completed_at = now()
+  where id = 'a0000000-0000-0000-0000-000000000001';
+update public.profiles set nickname = '기획러민지', campus_verified = true, grade = 2, bio = '기획/운영 역할을 선호합니다.', onboarding_completed_at = now()
+  where id = 'a0000000-0000-0000-0000-000000000002';
+update public.profiles set nickname = '개발자준호', campus_verified = true, grade = 3, bio = '프론트엔드 개발에 관심 있습니다.', onboarding_completed_at = now()
+  where id = 'a0000000-0000-0000-0000-000000000003';
+update public.profiles set nickname = '디자이너소은', campus_verified = false, grade = 1, bio = '포트폴리오용 디자인 활동을 찾습니다.', onboarding_completed_at = now()
+  where id = 'a0000000-0000-0000-0000-000000000004';
+update public.profiles set nickname = '마케터하늘', campus_verified = true, grade = 4, bio = '주말에만 참여 가능합니다.', onboarding_completed_at = now()
+  where id = 'a0000000-0000-0000-0000-000000000005';
+
+insert into public.user_roles (profile_id, role) values ('a0000000-0000-0000-0000-000000000001', 'admin')
+  on conflict (profile_id) do nothing;
+
+-- 서로 다른 가능 시간대 (요일·시간대가 모두 다르게) — 전체 교집합 계산 데모용.
+insert into public.availability_slots (profile_id, day_of_week, start_time, end_time) values
+  ('a0000000-0000-0000-0000-000000000002', 1, '09:00', '12:00'), -- 월 오전
+  ('a0000000-0000-0000-0000-000000000002', 3, '19:00', '21:00'), -- 수 저녁
+  ('a0000000-0000-0000-0000-000000000003', 2, '13:00', '18:00'), -- 화 오후
+  ('a0000000-0000-0000-0000-000000000003', 1, '10:00', '12:00'), -- 월 오전 (student1과 일부 중첩)
+  ('a0000000-0000-0000-0000-000000000004', 3, '18:00', '22:00'), -- 수 저녁 (student1과 일부 중첩)
+  ('a0000000-0000-0000-0000-000000000005', 6, '09:00', '18:00'), -- 토요일 종일
+  ('a0000000-0000-0000-0000-000000000005', 0, '09:00', '18:00'); -- 일요일 종일
+
+-- ===========================================================================
+-- 2. 참조 데이터: majors(데모 표시), interests, skills
+-- ===========================================================================
+insert into public.majors (id, college, department, name, is_demo) values
+  ('b0000000-0000-0000-0000-000000000001', '인문사회과학대학', '국어교육과', '국어교육학 전공', true),
+  ('b0000000-0000-0000-0000-000000000002', '경영경제대학', '경영학부', '경영학 전공', true),
+  ('b0000000-0000-0000-0000-000000000003', '융합공과대학', '컴퓨터과학과', '컴퓨터과학 전공', true),
+  ('b0000000-0000-0000-0000-000000000004', '문화예술대학', '디자인학부', '시각디자인 전공', true),
+  ('b0000000-0000-0000-0000-000000000005', '융합공과대학', '컴퓨터과학과', '소프트웨어공학 전공', true)
+on conflict do nothing;
+
+insert into public.profile_majors (profile_id, major_id) values
+  ('a0000000-0000-0000-0000-000000000002', 'b0000000-0000-0000-0000-000000000002'),
+  ('a0000000-0000-0000-0000-000000000003', 'b0000000-0000-0000-0000-000000000003'),
+  ('a0000000-0000-0000-0000-000000000004', 'b0000000-0000-0000-0000-000000000004'),
+  ('a0000000-0000-0000-0000-000000000005', 'b0000000-0000-0000-0000-000000000002')
+on conflict do nothing;
+
+insert into public.interests (id, name) values
+  ('c0000000-0000-0000-0000-000000000001', '환경'),
+  ('c0000000-0000-0000-0000-000000000002', 'IT/테크'),
+  ('c0000000-0000-0000-0000-000000000003', '교육'),
+  ('c0000000-0000-0000-0000-000000000004', '마케팅'),
+  ('c0000000-0000-0000-0000-000000000005', '디자인'),
+  ('c0000000-0000-0000-0000-000000000006', '사회공헌')
+on conflict do nothing;
+
+insert into public.skills (id, name) values
+  ('d0000000-0000-0000-0000-000000000001', '기획'),
+  ('d0000000-0000-0000-0000-000000000002', '프론트엔드 개발'),
+  ('d0000000-0000-0000-0000-000000000003', '백엔드 개발'),
+  ('d0000000-0000-0000-0000-000000000004', '디자인'),
+  ('d0000000-0000-0000-0000-000000000005', '마케팅/홍보'),
+  ('d0000000-0000-0000-0000-000000000006', '영상 편집')
+on conflict do nothing;
+
+insert into public.profile_interests (profile_id, interest_id) values
+  ('a0000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000003'),
+  ('a0000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000006'),
+  ('a0000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000002'),
+  ('a0000000-0000-0000-0000-000000000004', 'c0000000-0000-0000-0000-000000000005'),
+  ('a0000000-0000-0000-0000-000000000005', 'c0000000-0000-0000-0000-000000000004')
+on conflict do nothing;
+
+insert into public.profile_skills (profile_id, skill_id) values
+  ('a0000000-0000-0000-0000-000000000002', 'd0000000-0000-0000-0000-000000000001'),
+  ('a0000000-0000-0000-0000-000000000003', 'd0000000-0000-0000-0000-000000000002'),
+  ('a0000000-0000-0000-0000-000000000004', 'd0000000-0000-0000-0000-000000000004'),
+  ('a0000000-0000-0000-0000-000000000005', 'd0000000-0000-0000-0000-000000000005')
+on conflict do nothing;
+
+-- ===========================================================================
+-- 3. 활동 20개 이상 (상대 날짜: 모집중 / 마감임박 / 접수예정 / 마감 혼합)
+-- ===========================================================================
+with gen as (
+  select
+    i,
+    (array['환경','IT/테크','교육','마케팅','디자인','사회공헌'])[1 + (i % 6)] as category,
+    (array['대학생 서포터즈','아이디어 공모전','봉사활동','해커톤','교육 멘토링','캠페인 기획단'])[1 + (i % 6)] as kind,
+    (array['online','offline','hybrid'])[1 + (i % 3)] as location_type,
+    case (i % 4)
+      when 0 then now() - interval '10 days'   -- 접수 시작: 이미 진행 중
+      when 1 then now() - interval '1 days'     -- 마감 임박
+      when 2 then now() + interval '3 days'     -- 접수예정 (아직 시작 전)
+      else now() - interval '20 days'           -- 이미 마감
+    end as apply_start_at,
+    case (i % 4)
+      when 0 then now() + interval '14 days'    -- 모집중
+      when 1 then now() + interval '1 days'      -- 마감임박
+      when 2 then now() + interval '10 days'     -- 접수예정
+      else now() - interval '3 days'             -- 마감
+    end as apply_end_at,
+    case (i % 4) when 3 then 'closed' else 'published' end as status
+  from generate_series(1, 22) as i
+)
+insert into public.activities (
+  title, description, org_name, source_url, location_type, region,
+  apply_start_at, apply_end_at, activity_start_at, activity_end_at,
+  status, is_demo, created_by
+)
+select
+  format('%s %s 모집 %s기', kind, category, i),
+  format('%s 분야 %s 데모 활동입니다. 실제 공고가 아니며 운영자 확인 전 샘플 데이터입니다.', category, kind),
+  format('데모기관%s', 1 + (i % 7)),
+  format('https://example.org/activities/%s', i),
+  location_type,
+  case location_type when 'offline' then '서울' when 'hybrid' then '서울/온라인' else null end,
+  apply_start_at, apply_end_at,
+  apply_end_at + interval '7 days', apply_end_at + interval '37 days',
+  status, true, 'a0000000-0000-0000-0000-000000000001'
+from gen;
+
+insert into public.activity_tags (activity_id, tag)
+select a.id, t.tag
+from public.activities a
+cross join lateral (values (split_part(a.title, ' ', 2))) as t(tag)
+where a.is_demo = true;
+
+-- ===========================================================================
+-- 4. 수동 파티 데모: 모집중 파티 1개 + 확정된 파티 1개 (chat_rooms는 트리거가 자동 생성)
+-- ===========================================================================
+do $$
+declare
+  v_activity_id uuid;
+  v_party_recruiting uuid;
+  v_party_confirmed uuid;
+  v_slot_plan uuid;
+  v_slot_dev uuid;
+begin
+  select id into v_activity_id from public.activities where is_demo = true and status = 'published' order by id limit 1;
+
+  insert into public.parties (id, activity_id, source, leader_id, title, description, capacity, meeting_mode, status, recruit_deadline)
+  values (gen_random_uuid(), v_activity_id, 'manual', 'a0000000-0000-0000-0000-000000000002',
+          '기획+개발 2인 모집', '같이 아이디어 내고 빠르게 실행할 팀원을 구합니다.', 2, 'hybrid', 'recruiting', now() + interval '5 days')
+  returning id into v_party_recruiting;
+
+  insert into public.party_role_slots (party_id, role_name, capacity) values
+    (v_party_recruiting, '기획', 1), (v_party_recruiting, '개발', 1);
+
+  select id into v_slot_plan from public.party_role_slots where party_id = v_party_recruiting and role_name = '기획';
+
+  insert into public.party_members (party_id, profile_id, role_slot_id, is_leader)
+  values (v_party_recruiting, 'a0000000-0000-0000-0000-000000000002', v_slot_plan, true);
+
+  insert into public.party_applications (party_id, profile_id, role_slot_id, message, status)
+  select v_party_recruiting, 'a0000000-0000-0000-0000-000000000003',
+         (select id from public.party_role_slots where party_id = v_party_recruiting and role_name = '개발'),
+         '프론트엔드 경험 있습니다. 지원합니다!', 'pending';
+
+  -- 이미 확정된 파티 (승인 즉시 채팅 가능함을 보여주는 데모; confirmed는 팀 확정 상태일 뿐).
+  insert into public.parties (id, activity_id, source, leader_id, title, description, capacity, meeting_mode, status)
+  values (gen_random_uuid(), v_activity_id, 'manual', 'a0000000-0000-0000-0000-000000000004',
+          '디자인 2인 확정팀', '디자인 공모전 출전용으로 이미 팀이 꾸려졌습니다.', 2, 'online', 'confirmed')
+  returning id into v_party_confirmed;
+
+  insert into public.party_role_slots (party_id, role_name, capacity) values
+    (v_party_confirmed, '디자인', 2);
+
+  select id into v_slot_dev from public.party_role_slots where party_id = v_party_confirmed and role_name = '디자인';
+
+  insert into public.party_members (party_id, profile_id, role_slot_id, is_leader) values
+    (v_party_confirmed, 'a0000000-0000-0000-0000-000000000004', v_slot_dev, true),
+    (v_party_confirmed, 'a0000000-0000-0000-0000-000000000005', v_slot_dev, false);
+
+  -- 확정 파티 채팅방에 데모 메시지
+  insert into public.chat_messages (chat_room_id, sender_id, message_type, body)
+  select cr.id, 'a0000000-0000-0000-0000-000000000004', 'system', '디자이너소은님이 팀을 확정했습니다.'
+  from public.chat_rooms cr where cr.party_id = v_party_confirmed;
+
+  insert into public.chat_messages (chat_room_id, sender_id, message_type, body)
+  select cr.id, 'a0000000-0000-0000-0000-000000000005', 'text', '안녕하세요! 잘 부탁드립니다.'
+  from public.chat_rooms cr where cr.party_id = v_party_confirmed;
+
+  insert into public.chat_read_states (chat_room_id, profile_id, last_read_at)
+  select cr.id, 'a0000000-0000-0000-0000-000000000004', now()
+  from public.chat_rooms cr where cr.party_id = v_party_confirmed;
+end $$;
+
+-- ===========================================================================
+-- 5. 빠른 매칭 데모: 대기열 + 전원 수락 완료된 제안 (matched 결과를 parties에 통합 생성)
+--    실제 매칭 워커(4단계)가 수행할 전환을 시드에서는 완료된 결과물로 직접 구성한다.
+-- ===========================================================================
+do $$
+declare
+  v_activity_id uuid;
+  v_proposal_id uuid;
+  v_party_id uuid;
+  v_slot_id uuid;
+begin
+  select id into v_activity_id from public.activities where is_demo = true and status = 'published' order by id desc limit 1;
+
+  insert into public.matching_queue (activity_id, profile_id, template_role, willing_leader, status) values
+    (v_activity_id, 'a0000000-0000-0000-0000-000000000003', '개발', true, 'matched'),
+    (v_activity_id, 'a0000000-0000-0000-0000-000000000005', '마케팅', false, 'matched');
+
+  -- matched 전환 결과: parties(source='matching', confirmed)를 통합 생성 (architecture.md 5.4절).
+  insert into public.parties (id, activity_id, source, leader_id, title, capacity, status)
+  values (gen_random_uuid(), v_activity_id, 'matching', 'a0000000-0000-0000-0000-000000000003', '빠른 매칭 확정팀', 2, 'confirmed')
+  returning id into v_party_id;
+
+  insert into public.party_role_slots (party_id, role_name, capacity) values
+    (v_party_id, '개발', 1), (v_party_id, '마케팅', 1);
+
+  select id into v_slot_id from public.party_role_slots where party_id = v_party_id and role_name = '개발';
+  insert into public.party_members (party_id, profile_id, role_slot_id, is_leader) values
+    (v_party_id, 'a0000000-0000-0000-0000-000000000003', v_slot_id, true);
+
+  select id into v_slot_id from public.party_role_slots where party_id = v_party_id and role_name = '마케팅';
+  insert into public.party_members (party_id, profile_id, role_slot_id, is_leader) values
+    (v_party_id, 'a0000000-0000-0000-0000-000000000005', v_slot_id, false);
+
+  insert into public.match_proposals (activity_id, status, proposed_leader_profile_id, expires_at, party_id)
+  values (v_activity_id, 'matched', 'a0000000-0000-0000-0000-000000000003', now() + interval '24 hours', v_party_id)
+  returning id into v_proposal_id;
+
+  insert into public.match_proposal_members (proposal_id, profile_id, role_name, response, responded_at) values
+    (v_proposal_id, 'a0000000-0000-0000-0000-000000000003', '개발', 'accepted', now()),
+    (v_proposal_id, 'a0000000-0000-0000-0000-000000000005', '마케팅', 'accepted', now());
+end $$;
+
+-- ===========================================================================
+-- 6. 알림 / 차단 / 신고 데모
+-- ===========================================================================
+insert into public.notifications (profile_id, type, title, body, dedupe_key) values
+  ('a0000000-0000-0000-0000-000000000003', 'party_application_received', '새 지원이 도착했어요',
+   '기획+개발 2인 모집 파티에 새로운 지원이 있습니다.', 'party_application_received:demo-1'),
+  ('a0000000-0000-0000-0000-000000000005', 'match_proposal_matched', '매칭이 확정됐어요',
+   '빠른 매칭 제안이 확정되어 팀 채팅방이 생성되었습니다.', 'match_proposal_matched:demo-1')
+on conflict do nothing;
+
+insert into public.blocks (blocker_id, blocked_id) values
+  ('a0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000004')
+on conflict do nothing;
+
+insert into public.reports (reporter_id, target_type, target_id, reason, status)
+select 'a0000000-0000-0000-0000-000000000002', 'profile', 'a0000000-0000-0000-0000-000000000004',
+       '데모용 신고 샘플입니다.', 'open';
