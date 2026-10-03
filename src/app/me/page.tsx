@@ -4,6 +4,7 @@ import { getCurrentUserAndProfile, isCurrentUserAdmin } from "@/lib/auth";
 import { PageContainer } from "@/components/PageContainer";
 import { Badge } from "@/components/Badge";
 import { SignOutButton } from "@/components/SignOutButton";
+import type { ActivityWithType } from "@/lib/supabase/types";
 
 const CAMPUS_VERIFIED_LABEL: Record<"true" | "false", string> = {
   true: "소속 확인됨",
@@ -11,7 +12,7 @@ const CAMPUS_VERIFIED_LABEL: Record<"true" | "false", string> = {
 };
 
 export default async function MePage() {
-  const { user, profile } = await getCurrentUserAndProfile();
+  const { supabase, user, profile } = await getCurrentUserAndProfile();
 
   if (!user) {
     redirect("/login");
@@ -21,6 +22,14 @@ export default async function MePage() {
   }
 
   const isAdmin = await isCurrentUserAdmin();
+
+  const { data: bookmarks } = await supabase
+    .from("bookmarks")
+    .select("activity_id, activities(id, title, apply_end_at)")
+    .eq("profile_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(5)
+    .returns<{ activity_id: string; activities: Pick<ActivityWithType, "id" | "title" | "apply_end_at"> | null }[]>();
 
   return (
     <PageContainer>
@@ -47,9 +56,36 @@ export default async function MePage() {
       </section>
 
       <section className="mb-6 flex flex-col gap-2">
+        <h2 className="text-sm font-semibold text-[var(--color-muted-foreground)]">북마크</h2>
+        {bookmarks && bookmarks.length > 0 ? (
+          <ul className="flex flex-col gap-2">
+            {bookmarks
+              .filter((b) => b.activities)
+              .map((b) => (
+                <li key={b.activity_id}>
+                  <Link
+                    href={`/activities/${b.activity_id}`}
+                    className="block rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2.5 text-sm"
+                  >
+                    {b.activities!.title}
+                  </Link>
+                </li>
+              ))}
+          </ul>
+        ) : (
+          <p className="rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-sm text-[var(--color-muted-foreground)]">
+            아직 북마크한 활동이 없어요.
+          </p>
+        )}
         <p className="rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-sm text-[var(--color-muted-foreground)]">
-          북마크 · 지원 현황 · 참여 팀 · 매칭 이력 (준비 중)
+          지원 현황 · 매칭 이력 (준비 중)
         </p>
+        <Link
+          href="/parties"
+          className="rounded-md border border-[var(--color-brand-300)] bg-[var(--color-brand-50)] px-4 py-3 text-sm font-medium text-[var(--color-brand-700)]"
+        >
+          내 파티 보기
+        </Link>
         {isAdmin && (
           <Link
             href="/admin"

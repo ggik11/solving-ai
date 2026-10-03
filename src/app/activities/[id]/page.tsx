@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PageContainer } from "@/components/PageContainer";
 import { EmptyState } from "@/components/states";
 import { Badge } from "@/components/Badge";
+import { BookmarkButton } from "@/components/BookmarkButton";
 import { loadRecommendationForActivity } from "@/lib/recommendations/query";
 import { formatKst, getApplyPhase, needsSourceVerification, APPLY_PHASE_LABEL } from "@/lib/format";
 import type { ActivityWithType } from "@/lib/supabase/types";
@@ -29,9 +30,18 @@ export default async function ActivityDetailPage({ params }: { params: Promise<{
   const tagNames = (tags ?? []).map((t) => t.tag);
 
   const { data: userData } = await supabase.auth.getUser();
-  const recommendation = userData.user
-    ? await loadRecommendationForActivity(supabase, userData.user.id, activity, tagNames)
-    : null;
+  const [recommendation, bookmarkRes] = userData.user
+    ? await Promise.all([
+        loadRecommendationForActivity(supabase, userData.user.id, activity, tagNames),
+        supabase
+          .from("bookmarks")
+          .select("activity_id")
+          .eq("profile_id", userData.user.id)
+          .eq("activity_id", id)
+          .maybeSingle(),
+      ])
+    : [null, { data: null }];
+  const isBookmarked = Boolean(bookmarkRes.data);
 
   const phase = getApplyPhase(activity.apply_start_at, activity.apply_end_at);
   const needsVerification = needsSourceVerification(activity.last_verified_at);
@@ -50,7 +60,10 @@ export default async function ActivityDetailPage({ params }: { params: Promise<{
         </Badge>
       </div>
 
-      <h1 className="mb-1 text-xl font-semibold">{activity.title}</h1>
+      <div className="mb-1 flex items-start justify-between gap-2">
+        <h1 className="text-xl font-semibold">{activity.title}</h1>
+        {userData.user && <BookmarkButton activityId={id} initialBookmarked={isBookmarked} />}
+      </div>
       {activity.summary && <p className="mb-4 text-sm text-[var(--color-muted-foreground)]">{activity.summary}</p>}
 
       <section className="mb-4 flex flex-col gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm">
