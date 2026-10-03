@@ -147,6 +147,12 @@ export default async function MePage() {
         >
           차단 목록
         </Link>
+        <Link
+          href="/me/withdraw"
+          className="rounded-md border border-[var(--color-danger)]/40 px-4 py-3 text-sm font-medium text-[var(--color-danger)]"
+        >
+          회원 탈퇴
+        </Link>
         {isAdmin && (
           <Link
             href="/admin"

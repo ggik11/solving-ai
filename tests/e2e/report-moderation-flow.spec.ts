@@ -2,7 +2,6 @@ import { test, expect, type Page } from "@playwright/test";
 import { fetchLatestMagicLink } from "./mailpit";
 import { createAdminClient, TEST_USERS } from "../rls/helpers";
 
-const LEADER_EMAIL = TEST_USERS.student1.email; // 신고 대상
 const REPORTER_EMAIL = TEST_USERS.student2.email;
 const ADMIN_EMAIL = TEST_USERS.admin.email;
 
