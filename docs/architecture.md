@@ -333,6 +333,108 @@ score = 100 × Σ(weight_i × compatibility_i) / Σ(valid_weight_i)
 
 메시지는 항상 일반 텍스트 노드로 렌더링한다(`dangerouslySetInnerHTML`을 쓰지 않음) — 그래서 어떤 입력이 와도 HTML/스크립트는 절대 실행되지 않는다. `http(s)://`로 시작하는 URL만 `splitMessageSegments()`(순수 함수, 단위 테스트 있음)로 분리해 `<a>` 링크로 바꾸고, 그 외 스킴(`javascript:` 등)은 그냥 텍스트로 남는다.
 
+## 12. 4-B단계: 빠른 매칭 구현
+
+### 12.1 역할 구성 템플릿
+
+`activity_match_templates`(id, activity_id, name, is_active) + `activity_match_template_roles`
+(template_id, role_name, capacity) — `party_role_slots`와 같은 `{role_name, capacity}` 모양이다.
+운영자가 관리자 활동 수정 화면에서 활동당 여러 템플릿을 만들 수 있고(`MatchTemplatesManager`),
+비활성화하거나(참가 신청이 있으면 삭제 대신 비활성화를 안내) 삭제할 수 있다. `matching_queue`는
+`template_id`(어떤 템플릿에 참가했는지)와 `eligible_roles text[]`(수행 가능한 역할, 복수 선택)를
+갖는다 — 지시서 7장 B "수행 가능한 역할 복수 선택, 배정은 1슬롯"을 반영해 기존(3단계 당시
+설계된) 단일 `template_role` 컬럼을 이렇게 교체했다(4단계 전체가 미착수 상태였어서 데이터
+마이그레이션 없이 교체 가능했다).
+
+### 12.2 매칭 알고리즘 — TS 순수 함수와 plpgsql 구현을 둘 다 둔 이유
+
+`src/lib/matching.ts`의 `findMatch()`가 알고리즘의 1차 명세이자 단위 테스트 대상이다(10건,
+역할 충족·전체 교집합·겹침의 함정·팀장 동의·차단 관계·동점 규칙·탐색 한도). 하지만 실제
+운영 경로(아래 12.3절 워커)는 **이 TS 코드를 호출하지 않는다** — pg_cron은 Postgres 함수만
+실행할 수 있어 매칭 편성 로직 자체가 DB 안에서 돌아야 하기 때문이다. 그래서
+`_find_match_for_group()`(plpgsql)이 같은 설계(탐욕 선택 + 결정적 우선순위로 정렬한 후보를
+반복적 스택으로 백트래킹, 팀장 동의 필수, 차단 관계 제외, 탐색 한도)를 독립적으로
+재구현한다. 두 구현이 갈라질 위험은 있지만(의도적 트레이드오프), 각각 적합한 방식으로
+검증한다 — TS는 빠른 단위 테스트로 알고리즘 자체의 정확성을, plpgsql은 통합 테스트로
+트랜잭션·동시성 보장을 검증한다(12.3절).
+
+**전체 공통 시간 계산은 plpgsql 쪽이 더 간단하다.** 요일(0~6)×분(0~1439)을 "주간 분
+오프셋"(`day_of_week*1440 + 분`, 0~10079)으로 매핑하면 한 사람의 가능 시간을 하나의
+`int4multirange`로 표현할 수 있고, PostgreSQL 17의 멀티레인지 교집합 연산자(`*`)로 여러
+사람의 교집합을 그냥 곱해서 구할 수 있다(`range_agg()`로 겹치는 구간을 먼저 병합). 별도
+구간 스윕 알고리즘을 직접 구현할 필요가 없다. TS 쪽은 투 포인터 스윕(`intersectRanges`)으로
+같은 결과를 계산한다.
+
+### 12.3 워커 — pg_cron + run_match_worker
+
+로컬 스택에서 pg_cron이 실제로 동작하는지 먼저 확인했다(`shared_preload_libraries`에 이미
+포함돼 있어 `CREATE EXTENSION`만으로 바로 썼다 — 별다른 대안이 필요 없었다). 매분
+`select public.run_match_worker(now());`을 실행하도록 등록했다(`cron.schedule('match-worker', ...)`,
+마이그레이션 `20261003170100`). 개발 중 즉시 확인용으로 `npm run worker:match`
+(`scripts/run-match-worker.mjs`, service-role 키로 같은 RPC를 호출)도 제공한다. 워커 함수는
+기준 시각을 `p_as_of` 인자로 받으므로(기본값 `now()`), 테스트에서 미래 시각을 넘겨 만료
+처리를 결정적으로 재현할 수 있다.
+
+`run_match_worker(p_as_of)`는 순서대로:
+
+1. **만료 처리** — `status='proposed' and expires_at <= p_as_of`인 제안을 `FOR UPDATE SKIP LOCKED`로
+   훑으며 `_release_match_proposal(id, 'expired')`를 호출한다.
+2. **매칭 편성** — `matching_queue`에서 `status='waiting'`인 `(activity_id, template_id)` 조합을
+   모두 구해 그룹마다 `_find_match_for_group()`을 시도한다. 한 그룹 처리가 예외로 실패해도
+   `exception when others`로 감싸 다른 그룹·만료 처리에 영향을 주지 않는다.
+3. **북마크 마감임박 알림** — 북마크한 활동 중 `apply_end_at`이 `bookmark_deadline_hours`(기본
+   48시간) 이내로 남은 것에 대해 `dedupe_key = 'bookmark_deadline_soon:' || activity_id || ':' || profile_id`로
+   알림을 upsert한다(중복 발송 방지).
+
+반환값은 `{as_of, expired_proposals, new_proposals, bookmark_notifications_checked}` — 수동
+실행 시 바로 결과를 확인할 수 있다.
+
+**동시성 보장:**
+- `_find_match_for_group()`은 후보를 모을 때 `FOR UPDATE SKIP LOCKED`로 잠근다(윈도우 함수와
+  `FOR UPDATE`를 한 질의에 못 섞어 CTE로 잠그는 부분을 분리했다). 워커가 동시에 두 번
+  돌아도 같은 사람이 두 그룹에 동시에 들어가거나 같은 그룹에서 중복 제안이 나오지 않는다 —
+  먼저 잠근 트랜잭션이 그 행들을 다 가져가고, 나중 트랜잭션은 SKIP LOCKED로 건너뛰어 후보가
+  모자라면 그냥 제안을 만들지 않는다(다음 틱에 재시도).
+- **전원 수락 시 파티 생성은 정확히 1회만.** `respond_to_match_proposal`이 마지막 수락을
+  감지하면 `_finalize_match_proposal`을 호출하는데, 이 함수는 `match_proposals` 행을
+  `FOR UPDATE`로 잠그고 `status<>'proposed' or party_id is not null`이면 조용히 반환한다
+  (`approve_application`/`confirm_party`와 동일한 멱등 가드 패턴). 마지막 두 명이 동시에
+  수락해도 한쪽이 먼저 행 잠금을 얻어 파티를 만들고, 다른 쪽은 잠금을 기다렸다가 이미
+  처리된 것을 보고 그냥 끝난다.
+
+### 12.4 상태 전이 (실제 구현 기준 — 설계 5.3/5.4절과 거의 동일하게 구현됨)
+
+```
+matching_queue.status:
+  waiting ──(워커가 그룹을 편성)──> proposed
+  proposed ──(그 제안이 matched)──> matched
+  proposed ──(그 제안이 expired/cancelled, 본인 continue_on_fail=true)──> waiting (재편입)
+  proposed ──(그 제안이 expired/cancelled, continue_on_fail=false)──> cancelled
+  waiting ──(사용자 취소, cancel_matching_queue)──> cancelled
+  waiting/proposed ──(같은 활동의 수동 파티에 합류, approve_application)──> cancelled 또는
+                                                                              (연쇄) 제안 해제
+
+match_proposals.status:
+  proposed ──(전원 accepted)──> matched   (party_id 설정, 멱등)
+  proposed ──(한 명이라도 declined)──> cancelled
+  proposed ──(expires_at 경과, 워커가 감지)──> expired
+```
+
+설계 문서(5.3/5.4절)와의 차이는 사소하다: continue_on_fail 재편입 여부를 "제안 전체"가 아니라
+**멤버 개인별**(그 사람이 큐에 참가할 때 선택한 값)로 판정한다 — 거절한 사람도 자신의
+continue_on_fail이 true면 다시 대기열에 들어간다(사전 동의를 그대로 존중). 교차 정리는
+새로 추가됐다: `approve_application`(수동 파티 합류)이 같은 활동의 매칭 대기열/진행 중인
+제안을 정리하고(`_cancel_matching_queue_for_activity`), `_finalize_match_proposal`(매칭 확정)이
+반대로 그 사람의 수동 파티 대기 지원을 `superseded`로 정리한다 — 두 경로가 서로를 침범하지
+않게 한다(지시서 7장 B 명시 요구사항).
+
+### 12.5 Realtime 접근 차단 재검토
+
+4-A에서 설계한 "탈퇴 시 이미 열린 연결은 하트비트가 끊는다"(11.4절)를 4-B 작업 중 다시
+검토했다. Realtime private 채널의 구독 인가는 **연결 단위로 캐시**되고 새 JWT가 올 때만
+재검사된다는 사실을 확인했고(공식 문서 재확인), 완화책(`jwt_expiry` 단축)과 그래도 남는
+한계를 `docs/operations.md`에 별도로 정리했다 — 5단계에서 더 검토할 사항까지 포함.
+
 ## 변경 이력
 
 - 2026-10-03: 1단계(설계) 초안 작성. 코드 없음.
@@ -341,3 +443,4 @@ score = 100 × Σ(weight_i × compatibility_i) / Σ(valid_weight_i)
   2. **매칭 팀 통합** (4장, 5.1절, 5.4절): 빠른 매칭 제안이 `matched`로 전환되면 `parties`(`source='matching'`, `status='confirmed'`) + `party_role_slots` + `party_members`를 생성해 수동 파티와 동일한 테이블 구조를 쓰도록 변경. `chat_rooms`는 `parties`에만 1─1로 연결되도록 단순화. "활동당 사용자별 확정 팀 1개"는 `party_members`에 `activity_id`를 비정규화하고 `UNIQUE(activity_id, profile_id) WHERE is_confirmed = true` 부분 인덱스로 두 경로 모두 보장.
   3. **엔티티 보완** (4장): 지시서 11장의 엔티티 수를 "22개"에서 실제 목록 기준 "24개"로 정정(집계 오류 수정)하고, 운영/설정 그룹으로 `majors`(운영자 편집 가능, `is_demo` 플래그), `app_settings`(허용 이메일 도메인, 추천 가중치, 매칭 수락 기한), `user_roles`(관리자 권한, 프로필과 분리), `notifications.dedupe_key`(알림 중복 발송 방지 키)를 추가. 10장 2단계 완료 기준의 엔티티 수 표기도 동기화.
 - 2026-10-04: 4-A단계(팀 채팅 + 앱 내 알림) 구현. 11장 신설 — DB 함수 경유 쓰기, Realtime 전달 방식을 postgres_changes에서 Broadcast-from-Database로 변경한 이유와 설계(수동 검증으로 "private 채널은 Postgres Changes에 적용되지 않는다"는 사실을 발견), 알림 방 단위 묶음·"보고 있으면 생성 안 함" 근사 구현, 탈퇴·강퇴 시 접근 차단(이미 열려 있는 연결 포함) 메커니즘, 메시지 링크화 방식을 기록.
+- 2026-10-04: 4-B단계(빠른 매칭) 구현. 12장 신설 — 역할 구성 템플릿 스키마, 매칭 알고리즘을 TS 순수 함수(단위 테스트)와 plpgsql(실제 워커 경로, pg_cron이 Node를 호출할 수 없어 독립 재구현)로 이원화한 설계와 근거, 전체 공통 시간을 PostgreSQL 멀티레인지 연산자로 계산하는 방법, run_match_worker의 3단계 처리와 동시성 보장(SKIP LOCKED + 행 잠금 멱등 가드), 실제 구현 기준 상태 전이, Realtime 접근 차단 재검토(docs/operations.md로 연결) 기록.

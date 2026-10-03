@@ -166,7 +166,11 @@ site_url = "http://127.0.0.1:3000"
 # NEXT_PUBLIC_SITE_URL_ALIASES(.env.local)와 이 목록을 항상 같은 호스트 집합으로 맞춘다.
 additional_redirect_urls = ["http://127.0.0.1:3000", "http://localhost:3000"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
-jwt_expiry = 3600
+# 300(5분)으로 줄였다 — Realtime private 채널의 구독 인가는 연결이 유지되는 동안 캐시되고
+# 새 JWT가 올 때(로그인/토큰 갱신)만 재검사된다(docs/operations.md "탈퇴 후 Realtime 접근 차단"
+# 참고). 짧은 만료 시간은 탈퇴/강퇴된 사용자가 이미 열어 둔 탭이 받을 수 있는 메시지 노출
+# 구간을 최대 1시간에서 최대 5분으로 줄이는 완화책이다 — 근본 해결은 아니다.
+jwt_expiry = 300
 # JWT issuer URL. If not set, defaults to auth.external_url.
 # jwt_issuer = ""
 # Path to JWT signing key. DO NOT commit your signing keys file to git.
