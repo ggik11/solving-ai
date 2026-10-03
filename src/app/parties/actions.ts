@@ -3,15 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { friendlyError } from "@/lib/errors";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
-
-/** DB 함수는 'CODE: 설명' 형식으로 raise한다. 사용자에게는 설명만 보여준다. */
-function friendlyError(error: { message: string } | null, fallback: string): string {
-  if (!error) return fallback;
-  const idx = error.message.indexOf(": ");
-  return idx >= 0 ? error.message.slice(idx + 2) : error.message;
-}
 
 export interface RoleSlotInput {
   roleName: string;

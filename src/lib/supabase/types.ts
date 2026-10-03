@@ -91,3 +91,37 @@ export interface ActivityWithType extends Activity {
 
 export const APPLY_PHASES = ["upcoming", "open", "closing_soon", "closed"] as const;
 export type ApplyPhase = (typeof APPLY_PHASES)[number];
+
+export type ChatMessageType = "text" | "system";
+
+export interface ChatMessage {
+  id: string;
+  chat_room_id: string;
+  sender_id: string | null;
+  message_type: ChatMessageType;
+  body: string;
+  client_message_id: string | null;
+  created_at: string;
+}
+
+export interface ChatRoomSummary {
+  chat_room_id: string;
+  party_id: string;
+  party_title: string | null;
+  activity_title: string;
+  last_message_body: string | null;
+  last_message_at: string | null;
+  last_message_sender_nickname: string | null;
+  unread_count: number;
+}
+
+export interface NotificationRow {
+  id: string;
+  type: string;
+  target_type: string | null;
+  target_id: string | null;
+  title: string;
+  body: string | null;
+  read_at: string | null;
+  created_at: string;
+}
