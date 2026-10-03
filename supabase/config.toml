@@ -250,6 +250,13 @@ otp_expiry = 3600
 # subject = "You have been invited"
 # content_path = "./supabase/templates/invite.html"
 
+# 매직링크 이메일 — 기본 템플릿의 {{ .ConfirmationURL }}은 Supabase Auth 서버가 직접 처리하는
+# 링크라 우리 쪽 /auth/confirm 라우트(서버 세션 쿠키 설정)를 거치지 않는다. token_hash를
+# 우리 라우트로 직접 보내도록 커스텀 템플릿을 쓴다 (Supabase SSR 공식 패턴).
+[auth.email.template.magic_link]
+subject = "상명메이트 로그인 링크"
+content_path = "./supabase/templates/magic_link.html"
+
 # Uncomment to customize notification email template
 # [auth.email.notification.password_changed]
 # enabled = true

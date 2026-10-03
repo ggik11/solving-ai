@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="ko">
+  <body style="font-family: sans-serif;">
+    <h2>상명메이트 로그인</h2>
+    <p>아래 버튼을 누르면 로그인됩니다. 비밀번호는 쓰지 않아요.</p>
+    <p>
+      <a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email">
+        로그인하기
+      </a>
+    </p>
+    <p style="color: #888; font-size: 12px;">
+      본인이 요청하지 않았다면 이 메일을 무시해도 됩니다. 이 링크는 상명대학교 공식 서비스가 아닌
+      비공식 데모(상명메이트)에서 보낸 것입니다.
+    </p>
+  </body>
+</html>

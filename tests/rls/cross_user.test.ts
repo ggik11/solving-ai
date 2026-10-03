@@ -97,4 +97,46 @@ describe("다른 사용자의 데이터 접근", () => {
     // 메시지가 0개여도 되고(RLS가 허용했다는 사실이 중요), 에러 없이 조회되면 접근이 허용된 것이다.
     expect(messages).not.toBeNull();
   });
+
+  it("같은 파티원은 서로의 멤버십을 조회할 수 있지만, 다른 파티원은 조회할 수 없다 (is_party_member 헬퍼)", async () => {
+    const admin = createAdminClient();
+    // seed의 확정 디자인 파티: 팀장 student3 + 팀원 student4.
+    const { data: party } = await admin
+      .from("parties")
+      .select("id")
+      .eq("leader_id", TEST_USERS.student3.id)
+      .limit(1)
+      .single();
+    expect(party).toBeTruthy();
+
+    const { data: members } = await admin.from("party_members").select("profile_id").eq("party_id", party!.id);
+    expect(members?.length).toBe(2);
+
+    // student3(팀장)이 같은 파티원인 student4의 멤버십 행을 볼 수 있어야 한다.
+    const asStudent3 = await signInAs(TEST_USERS.student3.email);
+    const { data: seenByLeader, error: leaderError } = await asStudent3
+      .from("party_members")
+      .select("profile_id")
+      .eq("party_id", party!.id);
+    expect(leaderError).toBeNull();
+    expect(seenByLeader?.length).toBe(2);
+
+    // student4(팀원)도 같은 파티원인 student3의 행을 볼 수 있어야 한다.
+    const asStudent4 = await signInAs(TEST_USERS.student4.email);
+    const { data: seenByMember, error: memberError } = await asStudent4
+      .from("party_members")
+      .select("profile_id")
+      .eq("party_id", party!.id);
+    expect(memberError).toBeNull();
+    expect(seenByMember?.length).toBe(2);
+
+    // 이 파티에 속하지 않은 student1은 이 파티의 멤버십 행을 하나도 볼 수 없다.
+    const asStudent1 = await signInAs(TEST_USERS.student1.email);
+    const { data: seenByOutsider, error: outsiderError } = await asStudent1
+      .from("party_members")
+      .select("profile_id")
+      .eq("party_id", party!.id);
+    expect(outsiderError).toBeNull();
+    expect(seenByOutsider?.length ?? 0).toBe(0);
+  });
 });

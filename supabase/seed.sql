@@ -42,13 +42,21 @@ end $$;
 -- handle_new_user 트리거가 profiles 행을 이미 만들어뒀으므로 UPDATE로 데모 값을 채운다.
 update public.profiles set nickname = '운영자데모', account_status = 'active', onboarding_completed_at = now()
   where id = 'a0000000-0000-0000-0000-000000000001';
-update public.profiles set nickname = '기획러민지', campus_verified = true, grade = 2, bio = '기획/운영 역할을 선호합니다.', onboarding_completed_at = now()
+update public.profiles set nickname = '기획러민지', campus_verified = true, grade = 2, academic_status = 'enrolled',
+    bio = '기획/운영 역할을 선호합니다.', preferred_location_type = 'hybrid', preferred_region = '서울',
+    weekly_available_hours = 6, experience = '교내 홍보 서포터즈 1년 활동', onboarding_completed_at = now()
   where id = 'a0000000-0000-0000-0000-000000000002';
-update public.profiles set nickname = '개발자준호', campus_verified = true, grade = 3, bio = '프론트엔드 개발에 관심 있습니다.', onboarding_completed_at = now()
+update public.profiles set nickname = '개발자준호', campus_verified = true, grade = 3, academic_status = 'enrolled',
+    bio = '프론트엔드 개발에 관심 있습니다.', preferred_location_type = 'online', preferred_region = null,
+    weekly_available_hours = 10, experience = '교내 해커톤 2회 참가', onboarding_completed_at = now()
   where id = 'a0000000-0000-0000-0000-000000000003';
-update public.profiles set nickname = '디자이너소은', campus_verified = false, grade = 1, bio = '포트폴리오용 디자인 활동을 찾습니다.', onboarding_completed_at = now()
+update public.profiles set nickname = '디자이너소은', campus_verified = false, grade = 1, academic_status = 'enrolled',
+    bio = '포트폴리오용 디자인 활동을 찾습니다.', preferred_location_type = 'offline', preferred_region = '서울',
+    weekly_available_hours = 4, onboarding_completed_at = now()
   where id = 'a0000000-0000-0000-0000-000000000004';
-update public.profiles set nickname = '마케터하늘', campus_verified = true, grade = 4, bio = '주말에만 참여 가능합니다.', onboarding_completed_at = now()
+update public.profiles set nickname = '마케터하늘', campus_verified = true, grade = 4, academic_status = 'leave_of_absence',
+    bio = '주말에만 참여 가능합니다.', preferred_location_type = 'hybrid', preferred_region = '서울/온라인',
+    weekly_available_hours = 3, onboarding_completed_at = now()
   where id = 'a0000000-0000-0000-0000-000000000005';
 
 insert into public.user_roles (profile_id, role) values ('a0000000-0000-0000-0000-000000000001', 'admin')
@@ -91,13 +99,15 @@ insert into public.interests (id, name) values
   ('c0000000-0000-0000-0000-000000000006', '사회공헌')
 on conflict do nothing;
 
+-- 지시서 4장 "할 수 있는 역할" 어휘를 그대로 쓴다.
 insert into public.skills (id, name) values
   ('d0000000-0000-0000-0000-000000000001', '기획'),
-  ('d0000000-0000-0000-0000-000000000002', '프론트엔드 개발'),
-  ('d0000000-0000-0000-0000-000000000003', '백엔드 개발'),
+  ('d0000000-0000-0000-0000-000000000002', '개발'),
+  ('d0000000-0000-0000-0000-000000000003', '자료조사'),
   ('d0000000-0000-0000-0000-000000000004', '디자인'),
-  ('d0000000-0000-0000-0000-000000000005', '마케팅/홍보'),
-  ('d0000000-0000-0000-0000-000000000006', '영상 편집')
+  ('d0000000-0000-0000-0000-000000000005', '발표'),
+  ('d0000000-0000-0000-0000-000000000006', '영상'),
+  ('d0000000-0000-0000-0000-000000000007', '글쓰기')
 on conflict do nothing;
 
 insert into public.profile_interests (profile_id, interest_id) values
@@ -115,15 +125,31 @@ insert into public.profile_skills (profile_id, skill_id) values
   ('a0000000-0000-0000-0000-000000000005', 'd0000000-0000-0000-0000-000000000005')
 on conflict do nothing;
 
+insert into public.profile_preferred_activity_types (profile_id, activity_type_id)
+select 'a0000000-0000-0000-0000-000000000002'::uuid, id from public.activity_types where name in ('공모전', '교육·캠프')
+union all
+select 'a0000000-0000-0000-0000-000000000003'::uuid, id from public.activity_types where name in ('해커톤', '창업')
+union all
+select 'a0000000-0000-0000-0000-000000000004'::uuid, id from public.activity_types where name = '공모전'
+union all
+select 'a0000000-0000-0000-0000-000000000005'::uuid, id from public.activity_types where name = '서포터즈'
+on conflict do nothing;
+
 -- ===========================================================================
 -- 3. 활동 20개 이상 (상대 날짜: 모집중 / 마감임박 / 접수예정 / 마감 혼합)
 -- ===========================================================================
+insert into public.activity_types (name, is_demo) values
+  ('공모전', true), ('서포터즈', true), ('봉사', true),
+  ('해커톤', true), ('창업', true), ('교육·캠프', true)
+on conflict do nothing;
+
 with gen as (
   select
     i,
     (array['환경','IT/테크','교육','마케팅','디자인','사회공헌'])[1 + (i % 6)] as category,
-    (array['대학생 서포터즈','아이디어 공모전','봉사활동','해커톤','교육 멘토링','캠페인 기획단'])[1 + (i % 6)] as kind,
+    (array['공모전','서포터즈','봉사','해커톤','창업','교육·캠프'])[1 + (i % 6)] as kind,
     (array['online','offline','hybrid'])[1 + (i % 3)] as location_type,
+    (array['solo','team','both'])[1 + (i % 3)] as participation_mode,
     case (i % 4)
       when 0 then now() - interval '10 days'   -- 접수 시작: 이미 진행 중
       when 1 then now() - interval '1 days'     -- 마감 임박
@@ -136,24 +162,38 @@ with gen as (
       when 2 then now() + interval '10 days'     -- 접수예정
       else now() - interval '3 days'             -- 마감
     end as apply_end_at,
-    case (i % 4) when 3 then 'closed' else 'published' end as status
+    case (i % 4) when 3 then 'closed' else 'published' end as status,
+    -- 3개 중 1개는 "원문 확인 필요" 배지를 보여주기 위해 last_verified_at을 비워두거나 오래된 값으로 남긴다.
+    case (i % 3)
+      when 0 then null
+      when 1 then now() - interval '40 days'
+      else now() - interval '2 days'
+    end as last_verified_at
   from generate_series(1, 22) as i
 )
 insert into public.activities (
-  title, description, org_name, source_url, location_type, region,
+  title, summary, description, org_name, source_url, location_type, region,
+  activity_type_id, eligibility, participation_mode, team_min_size, team_max_size, benefit,
   apply_start_at, apply_end_at, activity_start_at, activity_end_at,
-  status, is_demo, created_by
+  status, is_demo, created_by, last_verified_at
 )
 select
   format('%s %s 모집 %s기', kind, category, i),
+  format('%s 분야 %s 데모 한 줄 요약입니다.', category, kind),
   format('%s 분야 %s 데모 활동입니다. 실제 공고가 아니며 운영자 확인 전 샘플 데이터입니다.', category, kind),
   format('데모기관%s', 1 + (i % 7)),
   format('https://example.org/activities/%s', i),
   location_type,
   case location_type when 'offline' then '서울' when 'hybrid' then '서울/온라인' else null end,
+  (select id from public.activity_types where name = kind),
+  '상명대학교 서울캠퍼스 재학생 (데모 자격 조건, 실제 공고 확인 필요)',
+  participation_mode,
+  case when participation_mode = 'solo' then null else 2 end,
+  case when participation_mode = 'solo' then null else 4 + (i % 3) end,
+  '데모 혜택: 활동 확인서 발급 (실제 공고 확인 필요)',
   apply_start_at, apply_end_at,
   apply_end_at + interval '7 days', apply_end_at + interval '37 days',
-  status, true, 'a0000000-0000-0000-0000-000000000001'
+  status, true, 'a0000000-0000-0000-0000-000000000001', last_verified_at
 from gen;
 
 insert into public.activity_tags (activity_id, tag)
