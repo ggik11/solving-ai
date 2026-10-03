@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PageContainer } from "@/components/PageContainer";
 import { EmptyState } from "@/components/states";
 import { Badge } from "@/components/Badge";
+import { loadRecommendationForActivity } from "@/lib/recommendations/query";
 import { formatKst, getApplyPhase, needsSourceVerification, APPLY_PHASE_LABEL } from "@/lib/format";
 import type { ActivityWithType } from "@/lib/supabase/types";
 
@@ -25,6 +26,12 @@ export default async function ActivityDetailPage({ params }: { params: Promise<{
   }
 
   const { data: tags } = await supabase.from("activity_tags").select("tag").eq("activity_id", id);
+  const tagNames = (tags ?? []).map((t) => t.tag);
+
+  const { data: userData } = await supabase.auth.getUser();
+  const recommendation = userData.user
+    ? await loadRecommendationForActivity(supabase, userData.user.id, activity, tagNames)
+    : null;
 
   const phase = getApplyPhase(activity.apply_start_at, activity.apply_end_at);
   const needsVerification = needsSourceVerification(activity.last_verified_at);
@@ -105,7 +112,23 @@ export default async function ActivityDetailPage({ params }: { params: Promise<{
 
       <section className="mb-4">
         <h2 className="mb-2 text-sm font-semibold text-[var(--color-muted-foreground)]">추천 근거</h2>
-        <EmptyState title="추천 점수는 3단계에서 제공돼요" />
+        {!userData.user ? (
+          <EmptyState title="로그인하면 맞춤 추천 근거를 볼 수 있어요" />
+        ) : recommendation && !recommendation.isDiscovery && recommendation.reasons.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Badge variant="info">{Math.round(recommendation.score ?? 0)}점</Badge>
+            {recommendation.reasons.map((reason) => (
+              <Badge key={reason} variant="neutral">
+                {reason}
+              </Badge>
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            title="아직 추천 근거가 충분하지 않아요"
+            description="프로필의 관심분야·희망 활동 유형·참여 조건을 채우면 더 정확히 계산돼요."
+          />
+        )}
       </section>
 
       <section className="mb-4">

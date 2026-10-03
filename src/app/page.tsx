@@ -4,6 +4,8 @@ import { getCurrentUserAndProfile } from "@/lib/auth";
 import { PageContainer } from "@/components/PageContainer";
 import { EmptyState } from "@/components/states";
 import { Badge } from "@/components/Badge";
+import { RecommendationCard } from "@/components/RecommendationCard";
+import { loadRecommendedActivities } from "@/lib/recommendations/query";
 import { formatKst, getApplyPhase, APPLY_PHASE_LABEL } from "@/lib/format";
 import type { ActivityWithType } from "@/lib/supabase/types";
 
@@ -13,6 +15,8 @@ export default async function HomePage() {
   if (user && !profile?.onboarding_completed_at) {
     redirect("/onboarding");
   }
+
+  const recommendations = user && profile ? await loadRecommendedActivities(supabase, profile.id) : [];
 
   const { data: closingSoon } = await supabase
     .from("activities")
@@ -41,7 +45,25 @@ export default async function HomePage() {
 
       <section className="mb-6">
         <h2 className="mb-2 text-sm font-semibold text-[var(--color-muted-foreground)]">맞춤 추천</h2>
-        <EmptyState title="맞춤 추천은 3단계에서 제공돼요" description="관심분야·가능 시간을 바탕으로 한 추천 계산은 다음 단계에서 구현합니다." />
+        {!user ? (
+          <EmptyState title="로그인하면 맞춤 추천을 받을 수 있어요" description="관심분야·희망 활동 유형을 바탕으로 활동을 추천해 드려요." />
+        ) : recommendations.length > 0 ? (
+          <ul className="flex flex-col gap-2">
+            {recommendations.map((r) => (
+              <li key={r.activityId}>
+                <RecommendationCard
+                  activityId={r.activityId}
+                  title={r.activity.title}
+                  score={r.score}
+                  isDiscovery={r.isDiscovery}
+                  reasons={r.reasons}
+                />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <EmptyState title="추천할 활동이 없어요" description="프로필의 관심분야·희망 활동 유형을 채우면 더 정확한 추천을 받을 수 있어요." />
+        )}
       </section>
 
       <section className="mb-6">
