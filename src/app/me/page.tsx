@@ -4,11 +4,18 @@ import { getCurrentUserAndProfile, isCurrentUserAdmin } from "@/lib/auth";
 import { PageContainer } from "@/components/PageContainer";
 import { Badge } from "@/components/Badge";
 import { SignOutButton } from "@/components/SignOutButton";
-import type { ActivityWithType } from "@/lib/supabase/types";
+import type { ActivityWithType, MatchingQueueStatus } from "@/lib/supabase/types";
 
 const CAMPUS_VERIFIED_LABEL: Record<"true" | "false", string> = {
   true: "소속 확인됨",
   false: "자기기입 (미검증)",
+};
+
+const MATCHING_STATUS_LABEL: Record<MatchingQueueStatus, string> = {
+  waiting: "대기 중",
+  proposed: "제안 받음",
+  matched: "매칭 완료",
+  cancelled: "취소됨",
 };
 
 export default async function MePage() {
@@ -36,6 +43,14 @@ export default async function MePage() {
     .order("created_at", { ascending: false })
     .limit(5)
     .returns<{ activity_id: string; activities: Pick<ActivityWithType, "id" | "title" | "apply_end_at"> | null }[]>();
+
+  const { data: matchHistory } = await supabase
+    .from("matching_queue")
+    .select("id, status, created_at, activities(id, title)")
+    .eq("profile_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(5)
+    .returns<{ id: string; status: MatchingQueueStatus; created_at: string; activities: { id: string; title: string } | null }[]>();
 
   return (
     <PageContainer>
@@ -83,9 +98,36 @@ export default async function MePage() {
             아직 북마크한 활동이 없어요.
           </p>
         )}
-        <p className="rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-sm text-[var(--color-muted-foreground)]">
-          빠른 매칭 이력 (준비 중, 4단계)
-        </p>
+      </section>
+
+      <section className="mb-6 flex flex-col gap-2">
+        <h2 className="text-sm font-semibold text-[var(--color-muted-foreground)]">빠른 매칭 이력</h2>
+        {matchHistory && matchHistory.length > 0 ? (
+          <ul className="flex flex-col gap-2">
+            {matchHistory
+              .filter((m) => m.activities)
+              .map((m) => (
+                <li key={m.id}>
+                  <Link
+                    href={m.status === "waiting" || m.status === "proposed" ? `/match/${m.activities!.id}` : `/activities/${m.activities!.id}`}
+                    className="flex items-center justify-between gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2.5 text-sm"
+                  >
+                    <span className="truncate">{m.activities!.title}</span>
+                    <Badge variant={m.status === "matched" ? "success" : m.status === "proposed" ? "info" : m.status === "waiting" ? "warning" : "neutral"}>
+                      {MATCHING_STATUS_LABEL[m.status]}
+                    </Badge>
+                  </Link>
+                </li>
+              ))}
+          </ul>
+        ) : (
+          <p className="rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-sm text-[var(--color-muted-foreground)]">
+            아직 참가한 빠른 매칭이 없어요.
+          </p>
+        )}
+      </section>
+
+      <section className="mb-6 flex flex-col gap-2">
         <Link
           href="/parties"
           className="rounded-md border border-[var(--color-brand-300)] bg-[var(--color-brand-50)] px-4 py-3 text-sm font-medium text-[var(--color-brand-700)]"

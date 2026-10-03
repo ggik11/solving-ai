@@ -201,7 +201,14 @@ export default async function ActivityDetailPage({ params }: { params: Promise<{
             description={activity.participation_mode === "solo" ? "개인 참여 활동이라 파티가 필요 없어요." : "가장 먼저 파티를 만들어 보세요."}
           />
         )}
-        <p className="mt-3 text-xs text-[var(--color-muted-foreground)]">빠른 매칭(자동 팀 구성)은 4단계에서 제공될 예정이에요.</p>
+        {userData.user && activity.participation_mode !== "solo" && activity.status === "published" && (
+          <Link
+            href={`/match/${id}`}
+            className="mt-3 inline-block rounded-md border border-[var(--color-brand-300)] bg-[var(--color-brand-50)] px-4 py-2.5 text-sm font-medium text-[var(--color-brand-700)]"
+          >
+            빠른 매칭으로 팀 찾기
+          </Link>
+        )}
       </section>
     </PageContainer>
   );

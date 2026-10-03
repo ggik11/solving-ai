@@ -115,6 +115,22 @@ export interface ChatRoomSummary {
   unread_count: number;
 }
 
+export interface MatchTemplateRole {
+  role_name: string;
+  capacity: number;
+}
+
+export interface MatchTemplate {
+  id: string;
+  activity_id: string;
+  name: string;
+  is_active: boolean;
+}
+
+export type MatchingQueueStatus = "waiting" | "proposed" | "matched" | "cancelled";
+export type MatchProposalStatus = "proposed" | "matched" | "expired" | "cancelled";
+export type MatchProposalResponse = "pending" | "accepted" | "declined";
+
 export interface NotificationRow {
   id: string;
   type: string;
