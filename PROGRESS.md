@@ -3,7 +3,7 @@
 ## 현재 상태 (2026-10-03 기준)
 
 - **완료:** 1단계(설계) + 설계 수정 3건, 2-A(뼈대+DB), 2-B(화면: 로그인/온보딩/활동 탐색·상세/관리자 CRUD·CSV 가져오기)
-- **3단계 진행 중:** 추천 계산 + 북마크 완료, 파티(DB 함수/화면)는 다음 작업.
+- **3단계 진행 중:** 추천 계산 + 북마크 + 파티 DB 함수 완료, 파티 화면(UI)은 다음 작업.
 - **미착수:** 3단계 나머지(파티), 4단계(매칭 워커·채팅), 5단계(운영·검증)
 - 실행 방법·테스트 계정·접속 주소는 `README.md` 참조. 설계 배경은 `docs/architecture.md` 참조.
 
@@ -11,6 +11,7 @@
 
 - **추천 계산 (커밋 `d9d60be`):** `src/lib/recommend.ts`에 architecture.md 7장 가중치 공식을 순수 함수로 구현(`app_settings.recommendation_weights` 사용). 비교 불가 항목은 "미상"으로 제외 후 재정규화하며, `duration_time_fit`은 활동에 비교 가능한 필드(주당 필요 시간 등)가 아직 없어 항상 미상 처리한다(아래 "알려진 제한" 참조). 유효 가중치 합이 임계값 미만이면 탐색(디스커버리) 카드로 전환하고 활동 유형별로 섞어 노출한다. 단위 테스트 9건(`tests/unit/recommend.test.ts`) 통과. 홈 "맞춤 추천"·활동 상세 "추천 근거" 플레이스홀더를 실제 값으로 교체했고, "숨기기"/"관심 없음"은 새 테이블 `activity_feedback`(RLS: 본인만)에 영구 저장된다.
 - **북마크 (커밋 `8cae5c0`):** `bookmarks` 테이블은 2-A부터 있었으나 화면이 없었다. 활동 상세에 낙관적 업데이트 토글 버튼을 추가하고(`src/components/BookmarkButton.tsx` + 서버 액션 `toggleBookmark`), `/me`에 최근 북마크 5건을 표시한다.
+- **파티 DB 함수 (커밋 `8927f05`, 마이그레이션 `20261003140100`):** 생성/지원/취소/승인/거절/탈퇴/위임/해산/확정/재모집 10개를 SECURITY DEFINER 함수로 구현. `approve_application`은 `parties` 행을 `FOR UPDATE`로 잠가 마지막 자리 동시 승인을 직렬화하고, `confirm_party`는 멤버별로 `is_confirmed` 갱신을 시도해 `party_members_one_confirmed_per_activity` 유니크 위반(동일 활동 다른 파티에 이미 확정됨)을 개별적으로 잡아 그 멤버만 자동 제외(`removed`)한 뒤 승자의 다른 대기 지원을 `superseded`로 정리한다(둘 다 에러로 중단되지 않고 완료됨). `leave_party`는 팀장이 다른 멤버가 있으면 위임 없이 탈퇴를 거부한다. `app_settings.party_rate_limits`로 생성/지원 빈도를 제한하고, 모든 이벤트에서 `notifications`를 `dedupe_key` upsert로 적재한다. `parties`/`party_members`/`party_applications`의 INSERT/UPDATE RLS를 운영자 전용으로 좁혀 일반 사용자는 반드시 이 함수들을 거치도록 강제했다. 통합 테스트(`tests/rls/party_lifecycle.test.ts`, 실제 로그인 클라이언트 + `Promise.all` 동시 호출) 4건 통과 — 아래 "실제 실행한 검증과 결과" 참조.
 
 ## 2-B 산출물
 
@@ -26,10 +27,10 @@
 
 | 명령 | 결과 |
 |---|---|
-| `npx supabase db reset` | 성공, 오류 없음 (마이그레이션 11개 전체 적용 + 시드) |
+| `npx supabase db reset` | 성공, 오류 없음 (마이그레이션 13개 전체 적용 + 시드, 3단계 마이그레이션 2건 포함) |
 | `npm run lint` | 성공, 0 problems |
 | `npm run typecheck` (`next typegen && tsc --noEmit`) | 성공 |
-| `npm test` (Vitest: 단위 15건 + RLS 18건) | **33/33 통과** |
+| `npm test` (Vitest: 단위 24건 + RLS/통합 36건) | **60/60 통과** (파티 DB 함수 동시성 통합 테스트 4건 포함) |
 | `npm run build` | 성공 |
 | `npx playwright test` (E2E 3건) | **3/3 통과** — 아래 "발견·수정한 버그" 참조 |
 | 360px/1440px 스크린샷 확인 (홈/활동탐색/활동상세/로그인) | 가로 스크롤 없음, 필터·카드·폼이 레이아웃 깨짐 없이 축소·중앙정렬됨 |
@@ -45,13 +46,15 @@
 ## 알려진 제한 / 다음 단계로 미룬 것
 
 1. **추천 계산의 "활동기간·투입시간 적합성(duration_time_fit)" 항목은 항상 "미상"으로 처리된다.** `activities` 테이블에 "주당 필요 시간" 같은 비교 가능한 필드가 없어서다(설계상 가중치 15는 배정돼 있으나 비교 불가 데이터로 처리하는 것이 허위 정밀도보다 낫다고 판단). 실제 필드를 추가하려면 활동 등록 폼·CSV 가져오기 스키마도 함께 바꿔야 한다.
-2. **파티·채팅 기능 없음.** `/parties`, `/chat`, 활동 상세의 "관련 파티·빠른 매칭" 모두 빈 상태만 표시한다(3~4단계 범위). 수동 파티 생성/지원/승인, 빠른 매칭 대기열 UI 없음 — DB 스키마와 RLS, 채팅방 자동 생성 트리거는 2-A에서 이미 구현됨.
-3. **매칭 확정 워커 없음** (2-A와 동일 — 아직 4단계 범위).
-4. **파티 공동 멤버 간 상호 조회는 이번에 해결했지만, "채팅 참가자 목록" 같은 파생 조회 UI는 아직 없다**(화면 자체가 없으므로).
-5. **CSV 가져오기는 `activity_type` 이름 정확히 일치만 연결**하고 fuzzy 매칭은 하지 않는다. 운영자가 이름을 맞추거나 가져온 뒤 수정 화면에서 보정해야 한다.
-6. **프로필 "다른 사용자에게 공개" 범위가 좁다.** `profile_majors`/`profile_interests`/`profile_skills`/`availability_slots`는 RLS상 본인·운영자만 조회 가능 — 추천 계산(3단계, 서버 함수)에는 문제없지만, "팀원 프로필 보기" 같은 화면이 생기면 RLS 정책을 넓히거나 전용 뷰/함수가 필요하다.
-7. **npm 취약점 1건(개발 의존성, high)** — `eslint-config-next`가 의존하는 `fast-glob`→`micromatch`→`braces`(GHSA-vfj7-8cjw-p6xm). `npm audit fix --force`는 Next 16과 불호환되는 `eslint-config-next@14.2.35`로 내려가므로 적용하지 않음. 런타임/배포 번들에는 포함되지 않는 린트 전용 devDependency.
-8. **상명대 이메일 도메인/전공 전체 목록/에브리타임 공식 연동 미확인** — 1단계 기록 그대로. `app_settings.allowed_email_domains`와 `majors` 테이블이 운영자 편집 가능하므로 값만 갱신하면 된다.
+2. **파티 역할 슬롯(`party_role_slots`) 배정 UI는 만들지 않았다.** DB 함수(`apply_to_party`/`approve_application`)는 `role_slot_id`를 항상 null로 두고 파티 전체 정원(`parties.capacity`)만으로 정원을 관리한다. 요청받은 범위(생성/지원/취소/승인·거절/탈퇴/위임/해산/확정/재모집)에 역할별 세부 배정은 포함되지 않아 의도적으로 제외했다. 필요해지면 역할별 지원 UI + `role_slot_id` 전달만 추가하면 되고, 트리거(`party_members_sync_slot_count`)는 이미 구현돼 있다.
+3. **파티 정보(제목/설명/정원 등) 수정 기능은 없다.** `parties` 테이블 UPDATE RLS를 운영자 전용으로 좁히면서 일반 팀장의 직접 수정도 함께 막았는데, 애초에 "수정" 화면 자체를 요청받지 않아 만들지 않았다. 필요하면 `update_party_details()` 같은 전용 함수를 추가해야 한다(현재는 상태 전이 함수만 있음).
+4. **파티 화면(UI)은 아직 없다.** DB 함수는 구현·검증됐지만(위 항목 참조) `/parties`, 활동 상세의 "관련 파티" 화면은 다음 작업으로 남아 있다. 빠른 매칭(`matching_queue`/`match_proposals`)과 채팅 UI는 여전히 4단계 범위다.
+5. **매칭 확정 워커 없음** (2-A와 동일 — 아직 4단계 범위).
+6. **파티 공동 멤버 간 상호 조회는 2-B에서 해결했지만, "채팅 참가자 목록" 같은 파생 조회 UI는 아직 없다**(채팅 화면 자체가 4단계 범위).
+7. **CSV 가져오기는 `activity_type` 이름 정확히 일치만 연결**하고 fuzzy 매칭은 하지 않는다. 운영자가 이름을 맞추거나 가져온 뒤 수정 화면에서 보정해야 한다.
+8. **프로필 "다른 사용자에게 공개" 범위가 좁다.** `profile_majors`/`profile_interests`/`profile_skills`/`availability_slots`는 RLS상 본인·운영자만 조회 가능 — 추천 계산(서버에서 본인 데이터만 읽으므로 문제없음)에는 지장이 없지만, "팀원 프로필 보기" 같은 화면이 생기면 RLS 정책을 넓히거나 전용 뷰/함수가 필요하다.
+9. **npm 취약점 1건(개발 의존성, high)** — `eslint-config-next`가 의존하는 `fast-glob`→`micromatch`→`braces`(GHSA-vfj7-8cjw-p6xm). `npm audit fix --force`는 Next 16과 불호환되는 `eslint-config-next@14.2.35`로 내려가므로 적용하지 않음. 런타임/배포 번들에는 포함되지 않는 린트 전용 devDependency.
+10. **상명대 이메일 도메인/전공 전체 목록/에브리타임 공식 연동 미확인** — 1단계 기록 그대로. `app_settings.allowed_email_domains`와 `majors` 테이블이 운영자 편집 가능하므로 값만 갱신하면 된다.
 
 ## 다음 명령 (사용자 승인 시)
 
