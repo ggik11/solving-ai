@@ -263,25 +263,48 @@ begin
 end $$;
 
 -- ===========================================================================
--- 5. 빠른 매칭 데모: 대기열 + 전원 수락 완료된 제안 (matched 결과를 parties에 통합 생성)
---    실제 매칭 워커(4단계)가 수행할 전환을 시드에서는 완료된 결과물로 직접 구성한다.
+-- 5. 빠른 매칭 데모 (4-B): 역할 구성 템플릿 3개 + 매칭 사례 3개
+--    - 이미 확정된 매칭 결과 1개 (과거 이력 화면 데모)
+--    - "student1이 참가하면 바로 제안이 생기는" 활동 1개 (student2가 이미 호환되는 역할·시간으로 대기 중)
+--    - "시간이 안 맞아 대기만 하는" 활동 1개 (student5가 주말에만 가능 — student1은 평일만 가능해 교집합 없음)
 -- ===========================================================================
 do $$
 declare
-  v_activity_id uuid;
+  v_activity_matched uuid;
+  v_activity_instant uuid;
+  v_activity_waiting uuid;
+  v_template_matched uuid;
+  v_template_instant uuid;
+  v_template_waiting uuid;
   v_proposal_id uuid;
   v_party_id uuid;
   v_slot_id uuid;
+  v_queue_dev uuid;
+  v_queue_mkt uuid;
 begin
-  select id into v_activity_id from public.activities where is_demo = true and status = 'published' order by id desc limit 1;
+  select id into v_activity_matched from public.activities
+    where is_demo = true and status = 'published' and participation_mode <> 'solo' order by id desc limit 1;
+  select id into v_activity_instant from public.activities
+    where is_demo = true and status = 'published' and participation_mode <> 'solo' order by id asc limit 1 offset 3;
+  select id into v_activity_waiting from public.activities
+    where is_demo = true and status = 'published' and participation_mode <> 'solo' order by id asc limit 1 offset 8;
 
-  insert into public.matching_queue (activity_id, profile_id, template_role, willing_leader, status) values
-    (v_activity_id, 'a0000000-0000-0000-0000-000000000003', '개발', true, 'matched'),
-    (v_activity_id, 'a0000000-0000-0000-0000-000000000005', '마케팅', false, 'matched');
+  -- 5-1. 이미 확정된 매칭 결과 (과거 이력 데모).
+  insert into public.activity_match_templates (id, activity_id, name) values
+    (gen_random_uuid(), v_activity_matched, '2인: 개발+마케팅') returning id into v_template_matched;
+  insert into public.activity_match_template_roles (template_id, role_name, capacity) values
+    (v_template_matched, '개발', 1), (v_template_matched, '마케팅', 1);
 
-  -- matched 전환 결과: parties(source='matching', confirmed)를 통합 생성 (architecture.md 5.4절).
+  insert into public.matching_queue (id, activity_id, profile_id, template_id, eligible_roles, willing_leader, status)
+  values
+    (gen_random_uuid(), v_activity_matched, 'a0000000-0000-0000-0000-000000000003', v_template_matched, array['개발'], true, 'matched'),
+    (gen_random_uuid(), v_activity_matched, 'a0000000-0000-0000-0000-000000000005', v_template_matched, array['마케팅'], false, 'matched');
+
+  select id into v_queue_dev from public.matching_queue where activity_id = v_activity_matched and profile_id = 'a0000000-0000-0000-0000-000000000003';
+  select id into v_queue_mkt from public.matching_queue where activity_id = v_activity_matched and profile_id = 'a0000000-0000-0000-0000-000000000005';
+
   insert into public.parties (id, activity_id, source, leader_id, title, capacity, status)
-  values (gen_random_uuid(), v_activity_id, 'matching', 'a0000000-0000-0000-0000-000000000003', '빠른 매칭 확정팀', 2, 'confirmed')
+  values (gen_random_uuid(), v_activity_matched, 'matching', 'a0000000-0000-0000-0000-000000000003', '빠른 매칭 확정팀', 2, 'confirmed')
   returning id into v_party_id;
 
   insert into public.party_role_slots (party_id, role_name, capacity) values
@@ -295,13 +318,35 @@ begin
   insert into public.party_members (party_id, profile_id, role_slot_id, is_leader) values
     (v_party_id, 'a0000000-0000-0000-0000-000000000005', v_slot_id, false);
 
-  insert into public.match_proposals (activity_id, status, proposed_leader_profile_id, expires_at, party_id)
-  values (v_activity_id, 'matched', 'a0000000-0000-0000-0000-000000000003', now() + interval '24 hours', v_party_id)
+  insert into public.match_proposals (activity_id, template_id, status, proposed_leader_profile_id, expires_at, party_id)
+  values (v_activity_matched, v_template_matched, 'matched', 'a0000000-0000-0000-0000-000000000003', now() + interval '24 hours', v_party_id)
   returning id into v_proposal_id;
 
-  insert into public.match_proposal_members (proposal_id, profile_id, role_name, response, responded_at) values
-    (v_proposal_id, 'a0000000-0000-0000-0000-000000000003', '개발', 'accepted', now()),
-    (v_proposal_id, 'a0000000-0000-0000-0000-000000000005', '마케팅', 'accepted', now());
+  insert into public.match_proposal_members (proposal_id, profile_id, queue_id, role_name, response, responded_at) values
+    (v_proposal_id, 'a0000000-0000-0000-0000-000000000003', v_queue_dev, '개발', 'accepted', now()),
+    (v_proposal_id, 'a0000000-0000-0000-0000-000000000005', v_queue_mkt, '마케팅', 'accepted', now());
+
+  -- 5-2. "바로 성사" 데모: student2(개발자준호, 월 10-12 가능)가 이미 "개발" 역할로 대기 중이다.
+  -- student1(기획러민지)은 월 9-12에 가능하므로 "기획" 역할로 참가하면 교집합 월 10-12(120분)로
+  -- 즉시 제안 조건을 만족한다(최소 60분). /match/[activityId]에서 직접 참가해 워커를 돌려보면 된다.
+  insert into public.activity_match_templates (id, activity_id, name) values
+    (gen_random_uuid(), v_activity_instant, '2인: 기획+개발') returning id into v_template_instant;
+  insert into public.activity_match_template_roles (template_id, role_name, capacity) values
+    (v_template_instant, '기획', 1), (v_template_instant, '개발', 1);
+
+  insert into public.matching_queue (activity_id, profile_id, template_id, eligible_roles, willing_leader, continue_on_fail, status)
+  values (v_activity_instant, 'a0000000-0000-0000-0000-000000000003', v_template_instant, array['개발'], false, true, 'waiting');
+
+  -- 5-3. "대기만" 데모: student5(마케터하늘, 토/일만 가능)가 "마케팅" 역할로 대기 중이다.
+  -- student1(월/수만 가능)이 참가해도 겹치는 요일이 아예 없어 전체 공통 시간이 0이므로
+  -- 워커를 돌려도 계속 대기 상태로 남는다.
+  insert into public.activity_match_templates (id, activity_id, name) values
+    (gen_random_uuid(), v_activity_waiting, '2인: 마케팅+디자인') returning id into v_template_waiting;
+  insert into public.activity_match_template_roles (template_id, role_name, capacity) values
+    (v_template_waiting, '마케팅', 1), (v_template_waiting, '디자인', 1);
+
+  insert into public.matching_queue (activity_id, profile_id, template_id, eligible_roles, willing_leader, continue_on_fail, status)
+  values (v_activity_waiting, 'a0000000-0000-0000-0000-000000000005', v_template_waiting, array['마케팅'], true, true, 'waiting');
 end $$;
 
 -- ===========================================================================
