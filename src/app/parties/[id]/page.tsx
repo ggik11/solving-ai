@@ -13,6 +13,8 @@ import {
   partyStatusBadgeVariant,
   type RoleSlotSummary,
 } from "@/lib/party";
+import { blockedCounterpartIds, type BlockRow } from "@/lib/blocks";
+import { BlockToggleButton } from "@/components/BlockToggleButton";
 import { PartyActionsPanel } from "./PartyActionsPanel";
 import { ApplicationDecisionButtons } from "./ApplicationDecisionButtons";
 
@@ -69,7 +71,7 @@ export default async function PartyDetailPage({ params }: { params: Promise<{ id
     notFound();
   }
 
-  const [membersRes, myApplicationRes, roleSlotsRes] = await Promise.all([
+  const [membersRes, myApplicationRes, roleSlotsRes, blocksRes] = await Promise.all([
     supabase
       .from("party_members")
       .select("profile_id, is_leader, is_confirmed, joined_at, profiles(nickname), party_role_slots(role_name)")
@@ -91,7 +93,9 @@ export default async function PartyDetailPage({ params }: { params: Promise<{ id
       .eq("party_id", id)
       .order("role_name", { ascending: true })
       .returns<RoleSlotSummary[]>(),
+    supabase.from("blocks").select("blocker_id, blocked_id").or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`).returns<BlockRow[]>(),
   ]);
+  const blockedIds = blockedCounterpartIds(user.id, blocksRes.data ?? []);
 
   const members = membersRes.data ?? [];
   const roleSlots = roleSlotsRes.data ?? [];
@@ -170,6 +174,9 @@ export default async function PartyDetailPage({ params }: { params: Promise<{ id
               <div className="flex items-center gap-1.5">
                 {m.is_leader && <Badge variant="info">팀장</Badge>}
                 {m.is_confirmed && <Badge variant="success">확정</Badge>}
+                {m.profile_id !== user.id && (
+                  <BlockToggleButton profileId={m.profile_id} initialBlocked={blockedIds.has(m.profile_id)} />
+                )}
               </div>
             </li>
           ))}

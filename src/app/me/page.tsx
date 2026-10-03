@@ -141,6 +141,12 @@ export default async function MePage() {
           알림
           {(unreadNotificationCount ?? 0) > 0 && <Badge variant="danger">{unreadNotificationCount}</Badge>}
         </Link>
+        <Link
+          href="/me/blocked"
+          className="rounded-md border border-[var(--color-brand-300)] bg-[var(--color-brand-50)] px-4 py-3 text-sm font-medium text-[var(--color-brand-700)]"
+        >
+          차단 목록
+        </Link>
         {isAdmin && (
           <Link
             href="/admin"

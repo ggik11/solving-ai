@@ -359,9 +359,10 @@ insert into public.notifications (profile_id, type, title, body, dedupe_key) val
    '빠른 매칭 제안이 확정되어 팀 채팅방이 생성되었습니다.', 'match_proposal_matched:demo-1')
 on conflict do nothing;
 
-insert into public.blocks (blocker_id, blocked_id) values
-  ('a0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000004')
-on conflict do nothing;
+-- 차단 데모 데이터는 두지 않는다 — 5-A단계부터 apply_to_party/send_chat_message가 실제로
+-- blocks를 읽으므로, 시드에 고정 차단 관계를 두면 그 관계와 무관한 다른 테스트(파티 지원 등)가
+-- 공유 테스트 계정(student1~4) 조합에 따라 우연히 영향을 받는다. 차단이 필요한 테스트는
+-- 각자 블록을 만들고 끝나면 정리한다(tests/rls/blocking.test.ts, matching_*.test.ts).
 
 insert into public.reports (reporter_id, target_type, target_id, reason, status)
 select 'a0000000-0000-0000-0000-000000000002', 'profile', 'a0000000-0000-0000-0000-000000000004',

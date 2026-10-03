@@ -64,6 +64,17 @@ async function deleteAvailabilityByIds(ids: string[]) {
   await admin.from("availability_slots").delete().in("id", ids);
 }
 
+async function addBlock(blockerId: string, blockedId: string) {
+  const admin = createAdminClient();
+  const { error } = await admin.from("blocks").insert({ blocker_id: blockerId, blocked_id: blockedId });
+  if (error) throw new Error(`차단 생성 실패: ${error.message}`);
+}
+
+async function removeBlock(blockerId: string, blockedId: string) {
+  const admin = createAdminClient();
+  await admin.from("blocks").delete().eq("blocker_id", blockerId).eq("blocked_id", blockedId);
+}
+
 describe("빠른 매칭 — DB 워커 추가 시나리오", () => {
   let activityId: string;
   let availabilityIds: string[] = [];
@@ -73,6 +84,7 @@ describe("빠른 매칭 — DB 워커 추가 시나리오", () => {
     activityId = "";
     await deleteAvailabilityByIds(availabilityIds);
     availabilityIds = [];
+    await removeBlock(TEST_USERS.student1.id, TEST_USERS.student3.id);
   });
 
   it("겹침의 함정: 모든 쌍은 겹치지만 셋이 동시에 겹치는 시간이 없으면 팀이 생성되지 않는다", async () => {
@@ -133,9 +145,10 @@ describe("빠른 매칭 — DB 워커 추가 시나리오", () => {
       { roleName: "개발", capacity: 1 },
     ]);
 
-    // seed.sql이 이미 student1↔student3 상호 차단 데모 데이터를 넣어두므로(블록 자체를 새로
-    // 만들지 않고) 그 관계를 그대로 재사용한다 — student1과 새로 차단 관계를 만들면 seed의
-    // 기존 차단과 겹쳐 "대안도 차단된" 상태가 되어 아무도 선택되지 않는 거짓 실패가 난다.
+    // 이 테스트만을 위해 임시로 student1↔student3 차단 관계를 만들고 afterEach에서 정리한다
+    // (예전에는 seed.sql의 고정 데모 차단을 재사용했지만, apply_to_party가 차단을 검사하게 된
+    // 뒤로는 그 고정 관계가 이 테스트와 무관한 다른 파티 지원 테스트에까지 영향을 줬다).
+    await addBlock(TEST_USERS.student1.id, TEST_USERS.student3.id);
     const student1 = await signInAs(TEST_USERS.student1.email); // 기획, 리더 — 월/수 가능
     const student3 = await signInAs(TEST_USERS.student3.email); // 개발 후보 1 (seed상 student1과 차단) — 수 가능
     const student2 = await signInAs(TEST_USERS.student2.email); // 개발 후보 2(대안) — 월 가능(student1과 겹침)

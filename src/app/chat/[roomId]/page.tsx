@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUserAndProfile } from "@/lib/auth";
 import { PageContainer } from "@/components/PageContainer";
+import { BlockToggleButton } from "@/components/BlockToggleButton";
+import { blockedCounterpartIds, type BlockRow } from "@/lib/blocks";
 import type { ChatMessage } from "@/lib/supabase/types";
 import { ChatRoomClient } from "./ChatRoomClient";
 
@@ -44,7 +46,7 @@ export default async function ChatRoomPage({ params }: { params: Promise<{ roomI
     notFound();
   }
 
-  const [membersRes, messagesRes] = await Promise.all([
+  const [membersRes, messagesRes, blocksRes] = await Promise.all([
     supabase
       .from("party_members")
       .select("profile_id, is_leader, profiles(nickname), party_role_slots(role_name)")
@@ -59,7 +61,9 @@ export default async function ChatRoomPage({ params }: { params: Promise<{ roomI
       .order("created_at", { ascending: false })
       .limit(PAGE_SIZE)
       .returns<ChatMessage[]>(),
+    supabase.from("blocks").select("blocker_id, blocked_id").or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`).returns<BlockRow[]>(),
   ]);
+  const blockedIds = blockedCounterpartIds(user.id, blocksRes.data ?? []);
 
   const members = membersRes.data ?? [];
   const isMember = members.some((m) => m.profile_id === user.id);
@@ -78,13 +82,6 @@ export default async function ChatRoomPage({ params }: { params: Promise<{ roomI
   await supabase.rpc("mark_chat_read", { p_chat_room_id: roomId, p_last_read_message_id: latestMessageId });
 
   const roomTitle = room.parties.title ?? room.parties.activities?.title ?? "팀 채팅";
-  const memberSummary = members
-    .map((m) => {
-      const name = m.profiles?.nickname ?? "멤버";
-      const role = m.party_role_slots?.role_name;
-      return `${name}${m.is_leader ? "(팀장)" : ""}${role ? ` · ${role}` : ""}`;
-    })
-    .join(", ");
 
   return (
     <PageContainer>
@@ -92,7 +89,21 @@ export default async function ChatRoomPage({ params }: { params: Promise<{ roomI
         ← 채팅 목록으로
       </Link>
       <h1 className="mb-1 text-lg font-semibold">{roomTitle}</h1>
-      {memberSummary && <p className="mb-3 text-xs text-[var(--color-muted-foreground)]">{memberSummary}</p>}
+
+      <ul className="mb-3 flex flex-col gap-1">
+        {members.map((m) => (
+          <li key={m.profile_id} className="flex items-center justify-between gap-2 text-xs text-[var(--color-muted-foreground)]">
+            <span>
+              {m.profiles?.nickname ?? "멤버"}
+              {m.is_leader ? "(팀장)" : ""}
+              {m.party_role_slots ? ` · ${m.party_role_slots.role_name}` : ""}
+            </span>
+            {m.profile_id !== user.id && (
+              <BlockToggleButton profileId={m.profile_id} initialBlocked={blockedIds.has(m.profile_id)} />
+            )}
+          </li>
+        ))}
+      </ul>
       <p className="mb-3 rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs text-[var(--color-muted-foreground)]">
         팀을 나가도 과거 채팅 내역은 팀에 남아요.
       </p>
@@ -102,6 +113,7 @@ export default async function ChatRoomPage({ params }: { params: Promise<{ roomI
         currentUserId={user.id}
         initialMessages={initialMessages}
         initialHasMoreOlder={hasMoreOlder}
+        blockedProfileIds={Array.from(blockedIds)}
       />
     </PageContainer>
   );

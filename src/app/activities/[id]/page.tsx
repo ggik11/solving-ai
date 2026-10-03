@@ -8,6 +8,7 @@ import { BookmarkButton } from "@/components/BookmarkButton";
 import { loadRecommendationForActivity } from "@/lib/recommendations/query";
 import { formatKst, getApplyPhase, needsSourceVerification, APPLY_PHASE_LABEL } from "@/lib/format";
 import { PARTY_STATUS_LABEL, partyStatusBadgeVariant } from "@/lib/party";
+import { blockedCounterpartIds, filterPartiesExcludingBlocked, type BlockRow } from "@/lib/blocks";
 import type { ActivityWithType } from "@/lib/supabase/types";
 
 interface ActivityPartyRow {
@@ -39,7 +40,7 @@ export default async function ActivityDetailPage({ params }: { params: Promise<{
   const tagNames = (tags ?? []).map((t) => t.tag);
 
   const { data: userData } = await supabase.auth.getUser();
-  const [recommendation, bookmarkRes, partiesRes] = userData.user
+  const [recommendation, bookmarkRes, partiesRes, blocksRes] = userData.user
     ? await Promise.all([
         loadRecommendationForActivity(supabase, userData.user.id, activity, tagNames),
         supabase
@@ -56,10 +57,19 @@ export default async function ActivityDetailPage({ params }: { params: Promise<{
           .in("status", ["recruiting", "full", "confirmed"])
           .order("created_at", { ascending: false })
           .returns<ActivityPartyRow[]>(),
+        supabase
+          .from("blocks")
+          .select("blocker_id, blocked_id")
+          .or(`blocker_id.eq.${userData.user.id},blocked_id.eq.${userData.user.id}`)
+          .returns<BlockRow[]>(),
       ])
-    : [null, { data: null }, { data: null }];
+    : [null, { data: null }, { data: null }, { data: null }];
   const isBookmarked = Boolean(bookmarkRes.data);
-  const relatedParties = (partiesRes.data ?? []).map((p) => ({
+  const blockedIds = userData.user ? blockedCounterpartIds(userData.user.id, blocksRes.data ?? []) : new Set<string>();
+  // 차단한(또는 차단당한) 사용자가 활성 멤버인 파티는 "관련 파티"에서 제외한다
+  // (지시서 8장 "차단한 두 사용자는 새 파티 추천...에서 제외").
+  const visibleParties = filterPartiesExcludingBlocked(partiesRes.data ?? [], blockedIds);
+  const relatedParties = visibleParties.map((p) => ({
     ...p,
     activeMemberCount: p.party_members.filter((m) => m.status === "active").length,
   }));

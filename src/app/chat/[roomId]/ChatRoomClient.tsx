@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { LinkifiedText } from "@/components/LinkifiedText";
 import type { ChatMessage } from "@/lib/supabase/types";
@@ -31,13 +31,18 @@ export function ChatRoomClient({
   currentUserId,
   initialMessages,
   initialHasMoreOlder,
+  blockedProfileIds = [],
 }: {
   roomId: string;
   currentUserId: string;
   initialMessages: ChatMessage[];
   initialHasMoreOlder: boolean;
+  blockedProfileIds?: string[];
 }) {
-  const [messages, setMessages] = useState<DisplayMessage[]>(initialMessages);
+  const blockedSet = useMemo(() => new Set(blockedProfileIds), [blockedProfileIds]);
+  const [messages, setMessages] = useState<DisplayMessage[]>(() =>
+    initialMessages.filter((m) => m.sender_id === null || !blockedSet.has(m.sender_id))
+  );
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [hasMoreOlder, setHasMoreOlder] = useState(initialHasMoreOlder);
@@ -49,27 +54,31 @@ export function ChatRoomClient({
   const latestCreatedAtRef = useRef<string | null>(initialMessages.at(-1)?.created_at ?? null);
   const subscribedRef = useRef(true);
 
-  function mergeMessages(prev: DisplayMessage[], incoming: ChatMessage[]): DisplayMessage[] {
-    let next = prev;
-    for (const row of incoming) {
-      const matchIndex = next.findIndex(
-        (m) => row.client_message_id && m.client_message_id === row.client_message_id && m.sender_id === row.sender_id
-      );
-      if (matchIndex >= 0) {
-        next = next.slice();
-        next[matchIndex] = { ...row, status: "sent" };
-        continue;
+  const mergeMessages = useCallback(
+    (prev: DisplayMessage[], incoming: ChatMessage[]): DisplayMessage[] => {
+      let next = prev;
+      for (const row of incoming) {
+        if (row.sender_id !== null && blockedSet.has(row.sender_id)) continue;
+        const matchIndex = next.findIndex(
+          (m) => row.client_message_id && m.client_message_id === row.client_message_id && m.sender_id === row.sender_id
+        );
+        if (matchIndex >= 0) {
+          next = next.slice();
+          next[matchIndex] = { ...row, status: "sent" };
+          continue;
+        }
+        if (next.some((m) => m.id === row.id)) continue;
+        next = [...next, { ...row, status: "sent" }];
       }
-      if (next.some((m) => m.id === row.id)) continue;
-      next = [...next, { ...row, status: "sent" }];
-    }
-    if (incoming.length > 0) {
-      const last = incoming[incoming.length - 1];
-      latestMessageIdRef.current = last.id;
-      latestCreatedAtRef.current = last.created_at;
-    }
-    return next;
-  }
+      if (incoming.length > 0) {
+        const last = incoming[incoming.length - 1];
+        latestMessageIdRef.current = last.id;
+        latestCreatedAtRef.current = last.created_at;
+      }
+      return next;
+    },
+    [blockedSet]
+  );
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
@@ -133,7 +142,7 @@ export function ChatRoomClient({
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [roomId, handleReadResult]);
+  }, [roomId, handleReadResult, mergeMessages]);
 
   async function handleSend() {
     const body = input.trim();

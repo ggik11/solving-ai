@@ -98,6 +98,17 @@ async function deleteActivity(activityId: string) {
   await admin.from("activities").delete().eq("id", activityId);
 }
 
+async function addBlock(blockerId: string, blockedId: string) {
+  const admin = createAdminClient();
+  const { error } = await admin.from("blocks").insert({ blocker_id: blockerId, blocked_id: blockedId });
+  if (error) throw new Error(`차단 생성 실패: ${error.message}`);
+}
+
+async function removeBlock(blockerId: string, blockedId: string) {
+  const admin = createAdminClient();
+  await admin.from("blocks").delete().eq("blocker_id", blockerId).eq("blocked_id", blockedId);
+}
+
 async function runWorker() {
   const admin = createAdminClient();
   const { data, error } = await admin.rpc("run_match_worker", { p_as_of: new Date().toISOString() });
@@ -122,6 +133,7 @@ describe("매칭 로직 일치 검증 — TS findMatch() vs plpgsql _find_match_
       touchedProfileIds = [];
       originalAvailability = [];
     }
+    await removeBlock(P1, P3);
   });
 
   it("역할 충족 성공 시나리오에서 두 구현이 같은 결론(매칭 성공, 같은 배정·공통 시간)을 낸다", async () => {
@@ -206,8 +218,10 @@ describe("매칭 로직 일치 검증 — TS findMatch() vs plpgsql _find_match_
   });
 
   it("차단 관계로 대안을 선택하는 시나리오에서 두 구현이 같은 팀 구성을 선택한다", async () => {
-    // seed.sql이 이미 student1(P1)↔student3(P3) 상호 차단 데모 데이터를 넣어두므로, 새로 차단
-    // 관계를 만들지 않고 그 관계를 그대로 재사용한다(대안도 같이 차단되는 거짓 실패를 피함).
+    // 이 테스트만을 위해 임시로 P1↔P3 차단 관계를 만들고 afterEach에서 정리한다(세 사용자
+    // 모두 공유 테스트 계정이라, 시드에 고정 차단을 두면 이 테스트와 무관한 다른 파티 지원
+    // 테스트까지 영향을 받는다 — tests/rls/blocking.test.ts 작업 중 실제로 발생했던 문제).
+    await addBlock(P1, P3);
     const slot: AvailabilityInterval = { dayOfWeek: 1, startMinutes: 600, endMinutes: 720 };
     const availability = { [P1]: [slot], [P2]: [slot], [P3]: [slot] };
     const roles = [{ roleName: "기획", capacity: 1 }, { roleName: "개발", capacity: 1 }];
