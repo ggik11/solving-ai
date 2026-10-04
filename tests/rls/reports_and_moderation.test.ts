@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createAdminClient, signInAs, TEST_USERS } from "./helpers";
+import { createAdminClient, createAnonClient, signInAs, TEST_USERS } from "./helpers";
 import { parseDbError } from "@/lib/errors";
 
 // 5-A단계(신고·관리자·계정): reports/audit_logs 테이블·RLS는 2단계부터 있었지만 DB 함수가
@@ -44,6 +44,47 @@ async function setAccountStatus(profileId: string, status: "active" | "suspended
   const admin = createAdminClient();
   await admin.from("profiles").update({ account_status: status }).eq("id", profileId);
 }
+
+describe("내부 전용 함수의 직접 RPC 호출 차단 (독립 보안 리뷰에서 발견)", () => {
+  // is_admin_profile/_blocked 등 "_"로 시작하는 내부 헬퍼와 is_admin_profile은 다른 SECURITY
+  // DEFINER 함수 안에서만 쓰이도록 설계됐지만, 이 저장소 전체가 써 온 `revoke all ... from
+  // public` 패턴이 실제로는 anon/authenticated의 접근을 막지 못하고 있었다 — Supabase 로컬
+  // 스택이 public 스키마의 새 함수에 기본적으로 anon/authenticated EXECUTE를 부여하는
+  // 기본 권한(default privileges)을 걸어 둬서, "public"이라는 가짜 역할에서만 revoke해 봐야
+  // 실제 역할(anon/authenticated)의 grant는 그대로 남기 때문이다. 마이그레이션 20261004060000로
+  // 고쳤다. is_admin_profile은 "누가 운영자인지" 정보가 새는 문제였고, _finalize_match_proposal은
+  // 더 심각하게 "전원 수락하지 않은 매칭 제안도 직접 호출로 강제 확정"할 수 있는 통로였다
+  // (respond_to_match_proposal이 호출 전에 하는 "전원 수락" 검사를 건너뛸 수 있었음).
+  it("비로그인 사용자는 is_admin_profile을 직접 호출할 수 없다 (운영자 여부 정보 유출 방지)", async () => {
+    const anon = createAnonClient();
+    const { error } = await anon.rpc("is_admin_profile", { p_profile_id: TEST_USERS.admin.id });
+    expect(error).not.toBeNull();
+    expect(error!.code).toBe("42501"); // permission denied for function
+  });
+
+  it("로그인 사용자도 is_admin_profile을 직접 호출할 수 없다", async () => {
+    const asStudent1 = await signInAs(TEST_USERS.student1.email);
+    const { error } = await asStudent1.rpc("is_admin_profile", { p_profile_id: TEST_USERS.admin.id });
+    expect(error).not.toBeNull();
+    expect(error!.code).toBe("42501");
+  });
+
+  it("로그인 사용자는 _finalize_match_proposal을 직접 호출해 '전원 수락' 검사를 우회할 수 없다", async () => {
+    const asStudent1 = await signInAs(TEST_USERS.student1.email);
+    const { error } = await asStudent1.rpc("_finalize_match_proposal", {
+      p_proposal_id: "00000000-0000-0000-0000-000000000000",
+    });
+    expect(error).not.toBeNull();
+    expect(error!.code).toBe("42501");
+  });
+
+  it("비로그인 사용자는 _blocked을 직접 호출해 임의 두 사용자의 차단 관계를 알아낼 수 없다", async () => {
+    const anon = createAnonClient();
+    const { error } = await anon.rpc("_blocked", { p_a: TEST_USERS.student1.id, p_b: TEST_USERS.student2.id });
+    expect(error).not.toBeNull();
+    expect(error!.code).toBe("42501");
+  });
+});
 
 describe("신고 생성/처리", () => {
   afterEach(async () => {
