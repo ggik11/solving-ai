@@ -27,6 +27,7 @@ const ALLOWLIST: Record<string, readonly ("anon" | "authenticated")[]> = {
   "approve_application(uuid)": ["authenticated"],
   "cancel_application(uuid)": ["authenticated"],
   "cancel_matching_queue(uuid)": ["authenticated"],
+  "check_url_fetch_rate_limit()": ["authenticated"],
   "confirm_party(uuid)": ["authenticated"],
   "create_party(uuid, text, text, text, timestamp with time zone, jsonb, text)": ["authenticated"],
   "create_report(text, uuid, text, text)": ["authenticated"],
