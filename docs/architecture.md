@@ -435,6 +435,53 @@ continue_on_fail이 true면 다시 대기열에 들어간다(사전 동의를 �
 재검사된다는 사실을 확인했고(공식 문서 재확인), 완화책(`jwt_expiry` 단축)과 그래도 남는
 한계를 `docs/operations.md`에 별도로 정리했다 — 5단계에서 더 검토할 사항까지 포함.
 
+## 13. DB 함수 EXECUTE 권한 규칙 (5-B 보안 마무리)
+
+5-B 보안 리뷰(위 PROGRESS.md "5-B단계: 보안 리뷰" 참조)에서 발견한 문제를 다시 요약한다:
+이 저장소가 지금까지 함수를 "막는" 방법으로 써 온 `revoke all on function ... from public`은
+**아무 효과가 없었다.** Supabase 로컬/클라우드 스택은 `public` 스키마에 새 함수가 생성되는
+순간 `ALTER DEFAULT PRIVILEGES`로 `anon`/`authenticated`/`service_role`이라는 **역할
+이름을 직접 지정해** EXECUTE를 부여한다. `PUBLIC`(모두)에서 revoke하는 것은 그 이름이 명시된
+grant를 전혀 건드리지 못한다 — `revoke ... from public`을 백날 반복해도 `anon`이 여전히
+그 함수를 호출할 수 있다. 실제로 `pg_proc`/`information_schema.routine_privileges`를 직접
+조회해 여러 함수(`run_match_worker`, `create_notification`, 트리거 헬퍼 다수, 그리고 "허용
+목록"에 있지만 anon은 필요 없는 함수 전부)가 이렇게 열려 있었음을 확인했다
+(마이그레이션 `20261004060000`, `20261004070000`).
+
+**지금부터 지켜야 하는 규칙 — 새 함수를 추가할 때마다:**
+
+1. **그 함수를 anon/authenticated가 직접 호출해야 하는가?**
+   - 아니오(내부 헬퍼, 트리거 함수, 다른 SECURITY DEFINER 함수 안에서만 호출됨) → 아무것도
+     하지 않아도 된다. 마이그레이션 `20261004070000`이 `postgres` 역할의 함수 기본 권한에서
+     `anon`/`authenticated`를 이미 제거해 뒀으므로(`alter default privileges for role postgres
+     in schema public revoke execute on functions from anon, authenticated`), 새 함수는
+     생성 즉시 anon/authenticated에게 닫혀 있다.
+   - 예(화면/서버 액션에서 RPC로 직접 호출됨) → 다음 패턴으로 **명시적으로** 열어야 한다
+     (기본값이 이미 닫혀 있으므로 `revoke`는 보통 불필요하지만, 과거 실수를 반복하지 않도록
+     습관적으로 함께 적어도 된다):
+     ```sql
+     revoke execute on function public.새함수(...) from public, anon, authenticated;
+     grant execute on function public.새함수(...) to authenticated;
+     -- anon(비로그인)도 호출해야 할 때만 추가:
+     -- grant execute on function public.새함수(...) to anon;
+     ```
+2. **anon에게도 열어야 하는 경우는 극히 드물다.** 이 앱은 로그인 없이는 쓰기도 "내 것" 조회도
+   없으므로, 실제로 anon이 필요한 함수는 `is_admin()`/`is_party_member(uuid)`처럼 **anon도
+   조회 가능한 테이블의 RLS 정책 USING절 안에서 호출되는 헬퍼**뿐이다(그 테이블을 anon이
+   조회할 때 정책 평가 자체가 그 함수를 호출하므로, EXECUTE가 없으면 조회가
+   "permission denied for function"으로 깨진다). 로그인 사용자용 RPC(파티·채팅·매칭·신고 등)는
+   전부 `authenticated`에게만 열고, 함수 본문의 `auth.uid() is null` 체크에 맡기지 말고
+   grant 자체를 anon에서 뺀다(그래야 "호출은 되지만 즉시 거부"가 아니라 "호출 자체가 안 됨"이
+   된다 — 방어의 겹이 하나 늘어난다).
+3. **service_role 전용 함수**(`run_match_worker(timestamptz)`처럼 기준 시각 등을 인자로 받는
+   pg_cron 워커 함수)는 `anon`/`authenticated` 둘 다에게 절대 열면 안 된다 — 열려 있으면
+   로그인 여부와 무관하게 누구나 임의의 기준 시각으로 워커 전체 실행을 직접 트리거할 수 있다
+   (실제로 이 취약점이 있었다). `grant execute on function ... to service_role;`만 쓴다.
+4. **검증은 테스트가 한다, 기억에 의존하지 않는다.** `tests/rls/execute_privileges.test.ts`가
+   `public` 스키마의 모든 함수를 전수 조회해 위 허용 목록과 비교한다 — 허용 목록에 없는 함수가
+   `anon`/`authenticated`에게 EXECUTE를 갖고 있으면 테스트가 실패한다. 새 RPC 함수를 추가하면
+   이 테스트 파일의 `ALLOWLIST`도 함께 갱신해야 한다(갱신하지 않으면 테스트가 바로 알려준다).
+
 ## 변경 이력
 
 - 2026-10-03: 1단계(설계) 초안 작성. 코드 없음.

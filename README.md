@@ -132,6 +132,29 @@ RLS 테스트는 `.env.local`의 `SUPABASE_SERVICE_ROLE_KEY`가 필요합니다.
 `match-worker` pg_cron 작업을 잠시 내려두고 스위트가 끝나면 복원합니다(`tests/global-setup.ts`)
 — 백그라운드 워커와 테스트의 수동 호출이 겹쳐 결과가 흔들리는 것을 막기 위함입니다.
 
+## 데이터베이스 함수 권한 규칙 (개발 규칙)
+
+`supabase/migrations/`에 `public` 스키마 함수를 새로 추가할 때는 아래 규칙을 지킵니다
+(배경·근거는 `docs/architecture.md` 13장 참조 — Supabase가 함수 생성 시점에
+`anon`/`authenticated`에게 EXECUTE를 자동으로 주던 문제를 고친 내용입니다):
+
+- **기본값은 이미 "닫힘"입니다.** 마이그레이션 `20261004070000`이 `postgres` 역할의 함수
+  기본 권한에서 `anon`/`authenticated`를 제거해 뒀으므로, 새로 만드는 함수는 아무것도 하지
+  않아도 `anon`/`authenticated`가 호출할 수 없습니다.
+- **로그인 사용자가 RPC로 직접 호출해야 하는 함수만** 명시적으로 엽니다: `grant execute on
+  function public.새함수(...) to authenticated;`. `anon`(비로그인)에게도 열어야 하는 경우는
+  거의 없습니다 — anon도 조회 가능한 테이블의 RLS 정책에서 쓰는 헬퍼(`is_admin()`,
+  `is_party_member(uuid)`처럼)가 아니면 `authenticated`에만 둡니다.
+- **`revoke all on function ... from public`만으로는 막히지 않습니다.** `anon`/`authenticated`를
+  반드시 이름으로 지정해서 revoke해야 합니다(`from public, anon, authenticated`). `from
+  public`만 쓰는 과거 패턴은 되돌아가지 않도록 주의합니다.
+- 기준 시각 등을 받는 **워커 함수**(`run_match_worker`처럼 pg_cron이 호출하는 함수)는
+  `service_role`에게만 열고 `anon`/`authenticated`에게는 절대 열지 않습니다.
+- `tests/rls/execute_privileges.test.ts`가 위 규칙을 자동으로 가드합니다 — `public` 스키마의
+  모든 함수를 조회해 허용 목록과 비교하고, 목록에 없는 함수가 `anon`/`authenticated`에게
+  EXECUTE를 갖고 있으면 테스트가 실패합니다. 새 RPC 함수를 추가하면 그 파일의 `ALLOWLIST`도
+  함께 갱신하세요.
+
 ## 환경변수
 
 `.env.example`을 복사해 `.env.local`을 만들고 값을 채웁니다. **필수** 항목이 없으면 앱이

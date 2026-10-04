@@ -2,7 +2,7 @@
 
 ## 현재 상태 (2026-10-04 기준)
 
-- **완료:** 1단계(설계) + 설계 수정 3건, 2-A(뼈대+DB), 2-B(화면: 로그인/온보딩/활동 탐색·상세/관리자 CRUD·CSV 가져오기), 3단계(추천·북마크·파티), 3단계 보완(역할 슬롯/활동당 가입 규칙/파티 정보 수정), 4-A(팀 채팅 + 앱 내 알림), 4-B(빠른 매칭: 알고리즘·DB 함수·스케줄 워커·화면), 5단계 일부(매칭 로직 일치 검증 + 추가 시나리오 테스트), **5-A(차단·신고·관리자·계정 정지·활동 제보·회원 탈퇴) 전체 완료**, **5-B(최종 점검·문서 완성) 사실상 완료**(테스트 안정화·인수 조건 점검·보안 리뷰 겸 실제 취약점 수정·접근성/반응형·README/operations/data-sources 문서)
+- **완료:** 1단계(설계) + 설계 수정 3건, 2-A(뼈대+DB), 2-B(화면: 로그인/온보딩/활동 탐색·상세/관리자 CRUD·CSV 가져오기), 3단계(추천·북마크·파티), 3단계 보완(역할 슬롯/활동당 가입 규칙/파티 정보 수정), 4-A(팀 채팅 + 앱 내 알림), 4-B(빠른 매칭: 알고리즘·DB 함수·스케줄 워커·화면), 5단계 일부(매칭 로직 일치 검증 + 추가 시나리오 테스트), **5-A(차단·신고·관리자·계정 정지·활동 제보·회원 탈퇴) 전체 완료**, **5-B(최종 점검·문서 완성) 사실상 완료**(테스트 안정화·인수 조건 점검·보안 리뷰 겸 실제 취약점 수정·접근성/반응형·README/operations/data-sources 문서), **5-B 보안 마무리(EXECUTE 권한 전수 점검) 완료** — 아래 "5-B단계: 보안 마무리" 참조
 - **미착수(외부 설정 필요, 5-B에서 손대지 못함):** `.env.example` 갱신 — 이 세션의 파일 접근 권한이 `.env*` 경로를 전부 차단해(Read/Write/Bash/PowerShell 전부) 직접 수정할 수 없었다. 아래 "다음 명령" 절에 권장 내용을 그대로 적어뒀으니 사용자가 직접 반영해야 한다.
 - 실행 방법·테스트 계정·접속 주소는 `README.md` 참조. 설계 배경은 `docs/architecture.md` 참조.
 
@@ -236,6 +236,84 @@ denied`로 막히는 것을 재현 확인했고, 정상 경로(다른 SECURITY D
   보호됨. 파티 생성/지원, 채팅 메시지, 신고, 활동 제보는 모두 `app_settings`의 앱 레벨 빈도
   제한이 있음(각 마이그레이션에서 확인).
 - 비밀값 노출: 위 "환경 분리" 절의 grep 결과 참조 — 클라이언트 번들에 service-role 키 없음.
+
+## 5-B단계: 보안 마무리 (EXECUTE 권한 전수 점검)
+
+바로 위 "5-B단계: 보안 리뷰"에서 `is_admin_profile`/내부 함수 10개를 고치며 발견한
+"`revoke all on function ... from public`은 anon/authenticated 접근을 막지 못한다"는 문제를
+**전체 `public` 스키마로 확대 점검**했다. `pg_proc`/`pg_default_acl`을 직접 조회해(이번에는
+`db reset`으로 완전히 새로 만든 DB에서, 수동 개입 없이) 확인한 결과, 지금까지 "막혀 있다"고
+문서에 적어 둔 함수 다수가 실제로는 그대로 열려 있었다.
+
+### 발견한 것
+
+- **가장 심각함(높음): `run_match_worker(timestamptz)`가 anon에게까지 열려 있었다.** 기준
+  시각을 인자로 받는 이 워커 함수는 pg_cron(service_role)만 호출해야 하는데,
+  `revoke all ... from public` + `grant ... to service_role`로는 Supabase가 생성 시점에
+  이름을 명시해 건 anon/authenticated grant가 전혀 지워지지 않았다. 즉 **비로그인 사용자도
+  임의의 기준 시각으로 매칭 워커 전체 실행을 직접 트리거할 수 있었다** — 분당 1회로 제한된
+  pg_cron 스케줄을 무시하고 원하는 시각·빈도로 만료 처리/매칭 편성을 강제할 수 있는 경로였다.
+- **중간: `create_notification`/`insert_system_chat_message`/`lock_activity_membership`과
+  트리거 헬퍼 7개**(`set_updated_at`, `handle_new_user`, `party_members_before_insert`,
+  `party_members_sync_slot_count`, `parties_sync_confirmed_members`,
+  `parties_create_chat_room`, `chat_messages_broadcast`)도 같은 leak으로 열려 있었다. 실질
+  피해는 없다고 판단했다(전부 다른 SECURITY DEFINER 함수 안에서만 호출되거나 — 그 시점엔
+  함수 소유자 postgres 권한으로 실행되므로 외부 grant가 무의미함 — 트리거로만 실행되는
+  함수라 `trigger` 반환형은 PostgREST가 RPC로 노출하지 않고 직접 SQL 호출도 애초에 거부됨).
+  그래도 최소 권한 원칙에 따라 명시적으로 제거했다.
+- **낮음(정보 노출 아님, 최소 권한 위반): "허용 목록"에 있는 로그인 사용자용 RPC 26개**
+  (`create_party`/`apply_to_party`/`send_chat_message`/`join_matching_queue`/`submit_activity`
+  등)와 `is_match_proposal_member(uuid)`가 전부 anon에게도 EXECUTE가 열려 있었다. 전부 본문
+  맨 앞에서 `auth.uid() is null`을 확인해 비로그인 호출을 거부하므로 정보가 새지는 않았지만,
+  "호출은 되지만 즉시 막힌다"가 아니라 "호출 자체가 안 된다"로 방어 겹을 하나 늘리기 위해
+  anon에서 제거하고 authenticated에게만 남겼다.
+
+### 수정 (마이그레이션 `20261004070000`)
+
+1. 위에서 발견한 모든 함수에서 `anon`/`authenticated` EXECUTE를 **역할 이름을 직접 지정해서**
+   revoke했다(`run_match_worker` 등 11개는 완전히 제거, "허용 목록" 27개는 anon만 제거하고
+   authenticated는 유지).
+2. **재발 방지:** `alter default privileges for role postgres in schema public revoke execute
+   on functions from anon, authenticated;`로 Supabase가 걸어 둔 기본값 자체를 뒤집었다 — 이제
+   `postgres` 역할로 만드는 새 함수는 아무것도 하지 않아도 anon/authenticated에게 자동으로
+   열리지 않는다(`service_role`에 대한 기본 부여는 그대로 둠 — 서버 전용 역할이라 안전하고
+   워커 함수들이 이 기본값에 의존함). `postgres`는 `supabase_admin`의 기본값을 바꿀 권한이
+   없다는 것도 실제로 시도해 확인했다(42501) — Supabase 플랫폼 부트스트랩 스키마용이라
+   우리 마이그레이션과는 무관하므로 그대로 둔다.
+3. `is_admin()`/`is_party_member(uuid)`는 **의도적으로 예외**로 남겨 anon/authenticated 둘 다
+   유지했다 — 이 둘은 anon도 조회 가능한 테이블(activities/profiles/party_members/chat_* 등)의
+   RLS 정책 USING절 안에서 직접 호출되므로, anon의 EXECUTE가 없으면 그 테이블 조회 자체가
+   "permission denied for function"으로 깨진다(`tests/rls/anon.test.ts`가 "비로그인 조회는
+   에러 없이 빈 배열"을 기대함 — 실제로 없애고 돌려봐서 깨지는 것까지 확인한 뒤 되돌렸다).
+
+### 가드 테스트 (`tests/rls/execute_privileges.test.ts`, 6건)
+
+PostgREST/supabase-js의 `.from()`으로는 `pg_catalog`/`information_schema`를 조회할 수
+없으므로(노출된 스키마가 아님), `tests/global-setup.ts`와 같은 방식으로 로컬 Postgres
+포트(54322)에 `pg`로 직접 연결해 `aclexplode(proacl)`로 모든 함수의 EXECUTE grant를 전수
+조회한다. 허용 목록(anon+authenticated 2개, authenticated 전용 28개)과 정확히 일치하는지
+확인하고(초과·누락 모두 실패), `run_match_worker`와 `_`로 시작하는 내부 함수는 별도로
+"anon/authenticated 둘 다 전혀 없어야 한다"를 단언한다. `ALTER DEFAULT PRIVILEGES`가 실제로
+걸려 있는지(`pg_default_acl` 조회)도 함께 검증해, 다음 마이그레이션이 이 설정을 실수로
+되돌려도 바로 잡아낸다.
+
+### 문서화
+
+위 규칙(기본값이 닫혀 있다는 전제, 새 함수를 열 때의 패턴, anon을 거의 쓰지 않는 이유,
+워커 함수는 service_role 전용)을 `docs/architecture.md` 13장과 `README.md`
+"데이터베이스 함수 권한 규칙" 절에 적었다 — 다음에 함수를 추가하는 사람(또는 나 자신)이
+같은 실수를 반복하지 않도록.
+
+### 검증
+
+| 명령 | 결과 |
+|---|---|
+| `npx supabase db reset` | 성공(마이그레이션 28개 전체 재적용 + 시드) — 이번엔 이 상태로 점검해 이전 세션의 수동 개입이 결과에 섞이지 않게 했다 |
+| `npm run lint` | 성공, 0 problems |
+| `npm run typecheck` | 성공 |
+| `npm test` (Vitest) | **143/143 통과**(기존 137건 + 신규 가드 테스트 6건) |
+| `npm run build` | 성공 (26개 라우트) |
+| `npm run test:e2e` (Playwright, 프로덕션 빌드 대상) | **8/8 통과** |
 
 ## 2-B 산출물
 
