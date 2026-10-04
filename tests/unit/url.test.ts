@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isSafeRelativePath, pickRequestOrigin, resolveAllowedOrigins } from "@/lib/url";
+import { isHttpUrl, isSafeRelativePath, pickRequestOrigin, resolveAllowedOrigins } from "@/lib/url";
 
 describe("resolveAllowedOrigins", () => {
   it("NEXT_PUBLIC_SITE_URL을 origin으로 정규화한다(경로·트레일링 슬래시 제거)", () => {
@@ -77,5 +77,32 @@ describe("isSafeRelativePath", () => {
 
   it("개행·제어문자가 섞인 값은 거부한다", () => {
     expect(isSafeRelativePath("/ok\r\nLocation: http://evil.com")).toBe(false);
+  });
+});
+
+describe("isHttpUrl", () => {
+  // 보안 리뷰 중 발견: activities.source_url이 <a href={...}>로 그대로 렌더링되는데(활동 상세,
+  // 관리자 제보 검토), React는 속성값(href)은 이스케이프하지 않으므로 javascript: 스킴을 넣으면
+  // 클릭하는 사람의 세션에서 그대로 실행된다(저장형 XSS) — 렌더링 시점에 http(s)만 허용한다.
+  it("http/https 절대 URL은 허용한다", () => {
+    expect(isHttpUrl("http://example.org")).toBe(true);
+    expect(isHttpUrl("https://example.org/path?x=1")).toBe(true);
+  });
+
+  it("javascript: 스킴은 거부한다 (저장형 XSS 벡터)", () => {
+    expect(isHttpUrl("javascript:alert(document.cookie)")).toBe(false);
+    expect(isHttpUrl("JaVaScRiPt:alert(1)")).toBe(false);
+  });
+
+  it("data:/vbscript: 등 다른 위험한 스킴도 거부한다", () => {
+    expect(isHttpUrl("data:text/html,<script>alert(1)</script>")).toBe(false);
+    expect(isHttpUrl("vbscript:msgbox(1)")).toBe(false);
+  });
+
+  it("스킴 없는 값·빈 값·null은 거부한다", () => {
+    expect(isHttpUrl("example.org")).toBe(false);
+    expect(isHttpUrl("")).toBe(false);
+    expect(isHttpUrl(null)).toBe(false);
+    expect(isHttpUrl(undefined)).toBe(false);
   });
 });

@@ -32,6 +32,7 @@ export default async function AdminAccountsPage({
           name="q"
           defaultValue={q ?? ""}
           placeholder="닉네임으로 검색"
+          aria-label="닉네임으로 검색"
           className="flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
         />
         <button type="submit" className="rounded-md bg-[var(--color-brand-600)] px-4 py-2 text-sm font-medium text-white">

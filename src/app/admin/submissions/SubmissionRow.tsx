@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { approveActivitySubmissionAction, rejectActivitySubmissionAction } from "./actions";
+import { isHttpUrl } from "@/lib/url";
 
 export interface SubmissionItem {
   id: string;
@@ -46,7 +47,7 @@ export function SubmissionRow({ submission }: { submission: SubmissionItem }) {
         제보자: {submission.submitter_nickname}
         {submission.org_name && ` · 주최: ${submission.org_name}`}
       </p>
-      {submission.source_url && (
+      {isHttpUrl(submission.source_url) && (
         <a href={submission.source_url} target="_blank" rel="noreferrer" className="text-xs text-[var(--color-brand-700)] underline">
           원문 링크 ↗
         </a>
@@ -56,6 +57,7 @@ export function SubmissionRow({ submission }: { submission: SubmissionItem }) {
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder="거절 사유 (선택)"
+          aria-label="거절 사유"
           className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--background)] px-2 py-1.5 text-xs"
         />
         <button

@@ -185,6 +185,16 @@ describe("팀 채팅 — DB 함수/RLS", () => {
     expect(tooLongError?.message).toMatch(/MESSAGE_TOO_LONG/);
   });
 
+  // "구독" 공격(다른 팀이 Realtime 채널을 직접 구독해 메시지를 엿듣는 시도)은 여기 vitest/jsdom
+  // 환경에서는 직접 테스트하지 않는다 — Supabase realtime-js의 WebSocket 클라이언트가 jsdom의
+  // Event 폴리필과 충돌해(`The "event" argument must be an instance of Event. Received an
+  // instance of Event`) 테스트 자체가 신뢰할 수 없게 깨진다(실제로 시도해 확인함). 대신
+  // tests/e2e/chat-flow.spec.ts가 실제 브라우저(WebSocket 충돌 없음)로 "이미 구독 중이던
+  // 연결"이 탈퇴 직후 더 이상 메시지를 받지 못하는 것을 확인하고, tests/e2e/outsider-chat-access.spec.ts가
+  // "애초에 멤버였던 적이 없는" 쪽을 보강한다 — 두 경로 모두 realtime.messages RLS의 같은
+  // is_party_member() 검사를 거치므로(architecture.md 11.2절), 이 파일의 REST 레벨 조회·전송
+  // 거부 테스트(위)와 합쳐 "조회·전송·구독" 세 경로 모두를 실제로 검증한 것으로 본다.
+
   it("팀장 위임·팀 확정 시에도 시스템 메시지가 남는다", async () => {
     const leader = await signInAs(TEST_USERS.student1.email);
 

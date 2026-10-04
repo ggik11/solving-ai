@@ -100,6 +100,7 @@ export function ReportRow({ report }: { report: ReportItem }) {
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder="처리 메모 (선택)"
+          aria-label="처리 메모"
           className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--background)] px-2 py-1.5 text-xs"
         />
         {STATUSES.filter((s) => s !== report.status).map((s) => (

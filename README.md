@@ -81,21 +81,41 @@ http://127.0.0.1:3000 에서 접속합니다.
 활동 22건(모집중/마감임박/접수예정/마감 혼합), 수동 파티 2건, 빠른 매칭 확정 1건이 함께
 시드됩니다. 전부 `is_demo = true`로 표시되는 샘플 데이터입니다.
 
-## 화면 지도 (2-B 기준)
+## 화면 지도 (5-A 기준, 전체)
 
 | 경로 | 설명 |
 |---|---|
-| `/` | 홈 — 마감임박 활동, 맞춤추천/파티·매칭은 "준비 중" |
+| `/` | 홈 — 마감임박 활동, 맞춤 추천, 모집 중인 파티, 내 매칭 상태 |
 | `/activities` | 활동 탐색 — 키워드·유형·모집상태·진행방식·팀참여·지역 필터, URL에 반영, 페이지네이션 |
-| `/activities/[id]` | 활동 상세 — 자격, KST 일정, 원문 링크, "원문 확인 필요"/데모 배지 |
+| `/activities/[id]` | 활동 상세 — 자격, KST 일정, 원문 링크, 추천 근거, 관련 파티, 빠른 매칭 진입 |
+| `/activities/submit` | 활동 제보 (로그인 사용자) — 운영자 승인 후 공개 |
 | `/login` → Mailpit → `/auth/confirm` | 매직링크 로그인 |
 | `/onboarding` | 첫 로그인 시 프로필 온보딩 (닉네임만 필수, 나머지는 건너뛰기 가능) |
-| `/me`, `/me/edit` | 마이 페이지, 프로필 수정 |
-| `/parties`, `/chat` | "준비 중" 빈 상태 (3~4단계 범위) |
-| `/admin` | 관리자 홈 (user_roles 기반 접근 제어, 일반 사용자는 403) |
-| `/admin/activities` | 활동 목록, 공개/비공개/마감 전환 |
-| `/admin/activities/new`, `/admin/activities/[id]/edit` | 활동 등록/수정 |
-| `/admin/activities/import` | CSV 가져오기 — 행별 오류/중복 미리보기 → 선택 등록(비공개로 생성) |
+| `/me`, `/me/edit` | 마이 페이지(북마크·매칭 이력·알림 배지), 프로필 수정 |
+| `/me/blocked` | 차단 목록 — 해제 가능 |
+| `/me/withdraw` | 회원 탈퇴 — 팀장으로 있는 파티가 있으면 먼저 위임/해산 안내 |
+| `/parties`, `/parties/new`, `/parties/[id]`, `/parties/[id]/edit` | 파티 생성·지원·승인·탈퇴·위임·해산·확정·재모집, 정보 수정 |
+| `/match/[activityId]` | 빠른 매칭 — 참가 전/대기 중/제안 받음 상태 전환 |
+| `/chat`, `/chat/[roomId]` | 팀 채팅 목록/상세 — 실시간 수신, 읽음 처리, 차단·신고 |
+| `/notifications` | 앱 내 알림 |
+| `/admin` | 관리자 홈 (`user_roles` 기반 접근 제어, 일반 사용자는 403) |
+| `/admin/activities`, `/new`, `/[id]/edit`, `/import` | 활동 CRUD, CSV 가져오기 |
+| `/admin/submissions` | 사용자 활동 제보 검토 — 승인(공개)/거절 |
+| `/admin/reports` | 신고 관리 — 상태 변경, 신고된 메시지는 전후 3개만 열람 |
+| `/admin/accounts` | 계정 관리 — 닉네임 검색, 정지/해제 |
+| `/admin/audit-logs` | 감사 로그 — 운영자 조치 이력 |
+
+## 매칭 워커 실행
+
+빠른 매칭 제안 편성·만료 처리는 `run_match_worker()` DB 함수가 한다. 로컬 스택은 `pg_cron`
+확장으로 **매분 자동 실행**되도록 이미 등록돼 있다(`supabase/migrations/20261003170100_...sql`
+끝부분). 즉시 확인하고 싶거나 pg_cron 없이 수동으로 돌리고 싶으면:
+
+```bash
+npm run worker:match
+```
+
+(`scripts/run-match-worker.mjs`, service-role 키로 같은 RPC를 직접 호출합니다.)
 
 ## 테스트
 
@@ -107,7 +127,28 @@ npm run test:rls     # RLS 테스트만
 npm run test:e2e     # Playwright E2E (내부적으로 build && start 실행)
 ```
 
-RLS 테스트는 `.env.local`의 `SUPABASE_SERVICE_ROLE_KEY`가 필요합니다.
+RLS 테스트는 `.env.local`의 `SUPABASE_SERVICE_ROLE_KEY`가 필요합니다. `npm test`는 실행 전에
+로컬 Postgres(`SUPABASE_DB_URL`, 기본값은 `supabase start`의 표준 로컬 포트)에 직접 연결해
+`match-worker` pg_cron 작업을 잠시 내려두고 스위트가 끝나면 복원합니다(`tests/global-setup.ts`)
+— 백그라운드 워커와 테스트의 수동 호출이 겹쳐 결과가 흔들리는 것을 막기 위함입니다.
+
+## 환경변수
+
+`.env.example`을 복사해 `.env.local`을 만들고 값을 채웁니다. **필수** 항목이 없으면 앱이
+빌드/실행 시점에 명확한 에러로 멈춥니다(조용히 잘못 동작하지 않습니다).
+
+| 변수 | 필수/선택 | 설명 |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | 필수 | Supabase 프로젝트 API URL (`supabase start` 출력의 `API_URL`, 또는 클라우드 프로젝트 설정) |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 필수 | 공개 anon 키 — 브라우저에 노출돼도 되는 값(RLS로 보호됨) |
+| `SUPABASE_SERVICE_ROLE_KEY` | 필수 | **서버 전용** 비밀 키. RLS를 우회하므로 서버 액션/테스트 하네스에서만 쓰고, `NEXT_PUBLIC_` 접두사를 절대 붙이지 않습니다(클라이언트 번들에 포함되면 안 됨) |
+| `NEXT_PUBLIC_SITE_URL` | 필수 | 매직링크 리다이렉트를 검증하는 허용 origin(`src/lib/url.ts`). Host 헤더를 신뢰하지 않고 이 값 기반 허용 목록으로만 리다이렉트 origin을 고릅니다 — 오픈 리다이렉트 방지 |
+| `NEXT_PUBLIC_SITE_URL_ALIASES` | 선택 | 추가로 허용할 origin(쉼표 구분). 로컬에서 `127.0.0.1`과 `localhost` 둘 다 쓸 때처럼, 같은 앱에 여러 호스트명으로 접속 가능할 때만 필요 |
+| `NEXT_PUBLIC_INBUCKET_URL` | 선택 | 로컬 메일 확인 도구(Mailpit) URL. Playwright E2E가 매직링크를 읽어오는 데 씁니다(로컬/CI 전용, 운영에서는 불필요) |
+| `SUPABASE_DB_URL` | 선택 | 테스트 하네스가 pg_cron을 직접 제어할 때 쓰는 Postgres 접속 문자열(기본값은 로컬 표준 포트). 운영 코드 경로에서는 쓰지 않습니다 |
+
+실제 비밀값은 `.env.example`에 넣지 않습니다 — 로컬 데모 키(위 anon/service-role 키)는 고정값이라
+괜찮지만, 클라우드 프로젝트로 전환하면 그 프로젝트의 실제 키로 교체해야 합니다.
 
 ## CSV 활동 가져오기 형식
 
@@ -124,6 +165,70 @@ title,summary,org_name,source_url,location_type,region,activity_type,eligibility
   등록됩니다(경고로 표시).
 - 가져온 행은 항상 **비공개(draft)** 로 등록되며, 운영자가 검토 후 공개로 전환합니다.
 
+## 배포 방법 (Supabase 클라우드 + Vercel 등)
+
+> **이 저장소에서 실제 배포를 실행하지는 않았습니다.** 아래는 배포 시 거칠 단계와, 선택한
+> 호스팅에서 pg_cron·Realtime·서버 함수가 어떻게 동작하는지에 대한 설명입니다.
+
+### 1. Supabase 프로젝트 준비 (DB + Auth + Realtime)
+
+1. [supabase.com](https://supabase.com)에서 새 프로젝트를 만듭니다(무료 플랜은 자동 백업이
+   없거나 매우 제한적입니다 — `docs/operations.md` 4절 참조).
+2. 로컬에서 그 프로젝트에 연결하고 마이그레이션을 적용합니다:
+   ```bash
+   npx supabase link --project-ref <프로젝트 참조 ID>
+   npx supabase db push
+   ```
+   이 저장소의 **시드(`supabase/seed.sql`)는 운영 프로젝트에 적용하지 않습니다** — 가상
+   데이터이고 테스트 계정 로그인 우회가 전혀 없는 진짜 매직링크 계정이라, 실제로 그 이메일
+   주소(`admin@smu.ac.kr` 등)를 제어하는 사람이면 누구나 로그인해 관리자 권한을 포함한
+   시드 데이터를 쓸 수 있게 됩니다. 운영 DB는 **빈 스키마 + 운영자가 직접 지정한 첫
+   관리자**로 시작해야 합니다(`docs/operations.md` 1절).
+3. **pg_cron 확장 활성화 확인** — Supabase 대시보드 **Database → Extensions**에서
+   `pg_cron`이 활성화돼 있는지 확인합니다. 마이그레이션(`20261003170100_matching_functions.sql`)이
+   `create extension if not exists pg_cron;`과 `cron.schedule('match-worker', '* * * * *', ...)`을
+   포함하므로 `db push`로 마이그레이션을 적용하면 **보통 자동으로 등록됩니다**. 다만 프로젝트
+   플랜에 따라 `pg_cron`이 기본 비활성화돼 있을 수 있으니 대시보드에서 실제로 Extensions 목록에
+   있고 활성 상태인지, 그리고 **Database → Cron Jobs**(또는 `select * from cron.job;`을 SQL
+   Editor에서 직접 실행)에서 `match-worker`가 매분 실행 중인지 반드시 확인합니다. **빠른 매칭
+   워커는 Postgres 안에서(pg_cron으로) 돌기 때문에 Next.js를 어디에 배포하든(Vercel이든 다른
+   곳이든) 영향을 받지 않습니다** — 이 점이 서버리스 호스팅(요청이 없으면 함수가 깨어나지 않는)에
+   매칭 워커를 올리지 않고 DB 안에 둔 이유입니다.
+4. **Realtime** — Supabase 클라우드는 Realtime이 프로젝트 생성 시 기본 활성화돼 있습니다.
+   `chat_messages_broadcast` 트리거(Broadcast-from-Database, `architecture.md` 11.2절)와
+   `realtime.messages` RLS 정책은 마이그레이션에 포함돼 있어 `db push`만으로 그대로 동작합니다 —
+   별도 설정이 필요 없습니다.
+5. **Auth 설정** — `docs/operations.md` 7절대로 Rate Limits(이메일 발송 빈도 등)와 JWT expiry를
+   대시보드에서 직접 설정합니다. 커스텀 SMTP도 이 단계에서 연결합니다(기본 제공 발신 한도는
+   운영 트래픽에 부족합니다).
+6. **첫 관리자 지정** — `docs/operations.md` 1절.
+
+### 2. Next.js 앱 배포 (Vercel 기준, 다른 Node 호스팅도 원리는 같음)
+
+1. 저장소를 Vercel에 연결합니다.
+2. 위 "환경변수" 표의 값을 Vercel 프로젝트 환경변수로 등록합니다 — 특히
+   `SUPABASE_SERVICE_ROLE_KEY`는 **서버 전용**으로 등록하고(Vercel은 `NEXT_PUBLIC_` 접두사가
+   없는 변수를 자동으로 서버 전용으로 취급합니다), `NEXT_PUBLIC_SITE_URL`은 실제 배포 도메인
+   (예: `https://sangmyung-mate.vercel.app` 또는 커스텀 도메인)으로 설정합니다.
+3. 서버 액션(Server Actions)은 Next.js 16 App Router의 표준 기능이라 Vercel에서 별도 설정 없이
+   동작합니다. `next.config.ts`의 `allowedDevOrigins`는 **개발 서버 전용** 설정이라 프로덕션
+   빌드/배포에는 영향을 주지 않습니다.
+4. Supabase Auth의 **Redirect URLs** 설정(대시보드 → Authentication → URL Configuration)에
+   배포 도메인의 `/auth/confirm` 경로를 추가해야 매직링크가 정상적으로 돌아옵니다.
+5. 배포 후 `docs/operations.md` 7절의 방법으로 Rate Limit·jwt_expiry가 실제로 반영됐는지
+   확인합니다.
+
+### 3. 배포 후 체크리스트
+
+- [ ] 시드 데이터가 운영 DB에 없다(위 1-2 참조).
+- [ ] 첫 관리자가 지정돼 있다.
+- [ ] `pg_cron`의 `match-worker`가 활성 상태로 매분 실행 중이다.
+- [ ] 커스텀 SMTP가 연결돼 있어 실제 메일이 발송된다.
+- [ ] `NEXT_PUBLIC_SITE_URL`이 실제 배포 도메인과 일치한다(불일치 시 매직링크 로그인이
+      "허용되지 않은 origin"으로 막힐 수 있습니다 — `src/lib/url.ts`).
+- [ ] Auth Rate Limits·jwt_expiry가 운영에 맞게 설정돼 있다.
+
 ## 알려진 제한
 
-`PROGRESS.md`의 "알려진 제한 / 다음 단계로 미룬 것" 참조.
+`PROGRESS.md`의 "알려진 제한 / 다음 단계로 미룬 것"과 `docs/operations.md`의 "알려진 제한"(운영
+관점) 참조.

@@ -74,3 +74,11 @@ body {
   max-width: 100%;
   overflow-x: hidden;
 }
+
+/* 키보드 초점 표시: 브라우저 기본 아웃라인에만 맡기면 버튼 배경색에 따라 잘 안 보이는 경우가
+   있다. 마우스 클릭에는 나타나지 않고(:focus-visible) 키보드 탐색에서만 일관되게 보이도록
+   전역으로 하나 둔다 — 색에만 의존하지 않고 모양(두꺼운 외곽선 + 오프셋)으로도 구분된다. */
+:focus-visible {
+  outline: 2px solid var(--color-brand-500);
+  outline-offset: 2px;
+}

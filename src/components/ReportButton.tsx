@@ -67,6 +67,7 @@ export function ReportButton({
         value={description}
         onChange={(e) => setDescription(e.target.value)}
         placeholder="자세한 설명 (선택)"
+        aria-label="신고 설명"
         rows={2}
         className="rounded-md border border-[var(--color-border)] bg-[var(--background)] px-2 py-1.5"
       />

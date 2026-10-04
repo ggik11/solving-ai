@@ -52,6 +52,7 @@ export function AccountRow({ account }: { account: AccountItem }) {
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             placeholder="정지 사유 (선택)"
+            aria-label="정지 사유"
             className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--background)] px-2 py-1.5 text-xs"
           />
           <button

@@ -9,6 +9,7 @@ import { loadRecommendationForActivity } from "@/lib/recommendations/query";
 import { formatKst, getApplyPhase, needsSourceVerification, APPLY_PHASE_LABEL } from "@/lib/format";
 import { PARTY_STATUS_LABEL, partyStatusBadgeVariant } from "@/lib/party";
 import { blockedCounterpartIds, filterPartiesExcludingBlocked, type BlockRow } from "@/lib/blocks";
+import { isHttpUrl } from "@/lib/url";
 import type { ActivityWithType } from "@/lib/supabase/types";
 
 interface ActivityPartyRow {
@@ -140,7 +141,7 @@ export default async function ActivityDetailPage({ params }: { params: Promise<{
         </div>
       )}
 
-      {activity.source_url && (
+      {isHttpUrl(activity.source_url) && (
         <a
           href={activity.source_url}
           target="_blank"

@@ -295,6 +295,20 @@ describe("사용자 활동 제보 → 운영자 승인/거절", () => {
     activityId = "";
   });
 
+  it("javascript: 등 http(s)가 아닌 원문 링크는 거부된다 (저장형 XSS 방지)", async () => {
+    // 보안 리뷰 중 발견: source_url은 활동 상세·관리자 제보 검토 화면에서 그대로 <a href>로
+    // 렌더링된다. 앱 레이어(isHttpUrl)에도 방어를 추가했지만, 이 함수 자체도 저장 시점에 막는다.
+    const submitter = await signInAs(TEST_USERS.student2.email);
+    const { error } = await submitter.rpc("submit_activity", {
+      p_title: `XSS 시도 ${Date.now()}`,
+      p_summary: null, p_description: null, p_org_name: null,
+      p_source_url: "javascript:alert(document.cookie)",
+      p_location_type: "offline", p_region: null, p_participation_mode: "team",
+    });
+    expect(error).not.toBeNull();
+    expect(parseDbError(error, "").code).toBe("INVALID_SOURCE_URL");
+  });
+
   it("제보한 활동은 draft로 비공개 생성되고, 운영자만 승인·거절할 수 있다", async () => {
     const submitter = await signInAs(TEST_USERS.student2.email);
     const { data: id, error: submitError } = await submitter.rpc("submit_activity", {
