@@ -85,6 +85,7 @@ export interface Activity {
   apply_end_at_evidence: string | null;
   needs_verification: boolean;
   verification_note: string | null;
+  last_verification_attempt_at: string | null;
   created_at: string;
   updated_at: string;
 }

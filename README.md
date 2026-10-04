@@ -117,6 +117,28 @@ npm run worker:match
 
 (`scripts/run-match-worker.mjs`, service-role 키로 같은 RPC를 직접 호출합니다.)
 
+## 활동 URL 가져오기 / 링크 정기 점검
+
+`/admin/activities/new`·`/admin/activities/[id]/edit`·`/activities/submit` 화면의 "URL로
+가져오기"는 주최기관 공고 페이지 1개를 안전하게(SSRF 방어 포함) 가져와 제목·날짜 후보·근거
+문장을 미리보기로 보여줍니다. 아무것도 자동으로 저장되지 않고, 운영자/사용자가 "적용"을 눌러야
+폼에 반영됩니다. 설계는 `docs/architecture.md` 14장 참조.
+
+공개 중인 활동의 원문 링크는 **하루 1회** `/api/cron/link-check`가 점검합니다(응답이 비정상이거나
+저장해 둔 마감일 문구를 더 이상 찾을 수 없으면 "원문 확인 필요"로 표시 + 운영자 알림). 매칭
+워커와 달리 이 점검은 실제 외부 HTTP 요청이 필요해 pg_cron이 직접 할 수 없으므로, **외부
+스케줄러가 이 엔드포인트를 하루 1회 호출하도록 등록해야 합니다**(Vercel Cron Job, OS cron,
+GitHub Actions scheduled workflow 등 — 이 저장소에서 실제로 등록하지는 않았습니다). 엔드포인트는
+`CRON_SECRET` 환경변수(아래 "환경변수" 절)로 보호되며, 그 값이 없으면 모든 요청을 거부합니다.
+
+즉시 확인하거나 로컬에서 수동으로 돌리고 싶으면(개발 서버가 떠 있어야 함):
+
+```bash
+npm run worker:link-check
+```
+
+(`scripts/run-link-check-worker.mjs`, `/api/cron/link-check`를 직접 호출합니다.)
+
 ## 테스트
 
 ```bash
@@ -169,6 +191,11 @@ RLS 테스트는 `.env.local`의 `SUPABASE_SERVICE_ROLE_KEY`가 필요합니다.
 | `NEXT_PUBLIC_SITE_URL_ALIASES` | 선택 | 추가로 허용할 origin(쉼표 구분). 로컬에서 `127.0.0.1`과 `localhost` 둘 다 쓸 때처럼, 같은 앱에 여러 호스트명으로 접속 가능할 때만 필요 |
 | `NEXT_PUBLIC_INBUCKET_URL` | 선택 | 로컬 메일 확인 도구(Mailpit) URL. Playwright E2E가 매직링크를 읽어오는 데 씁니다(로컬/CI 전용, 운영에서는 불필요) |
 | `SUPABASE_DB_URL` | 선택 | 테스트 하네스가 pg_cron을 직접 제어할 때 쓰는 Postgres 접속 문자열(기본값은 로컬 표준 포트). 운영 코드 경로에서는 쓰지 않습니다 |
+| `CRON_SECRET` | 정기 점검 쓰려면 필수 | `/api/cron/link-check` 호출 인증용 임의의 긴 문자열. 설정하지 않으면 이 엔드포인트는 모든 요청을 거부합니다(기본값이 "닫힘") |
+| `ACTIVITY_IMPORT_LLM_API_KEY` | 선택 | URL 가져오기의 LLM 보조(제목·주최기관·태그·유형·자격 요약 **후보만** 제안, 날짜는 절대 받지 않음)를 켜는 키. 없으면 규칙 기반 추출 + 수동 입력만으로 등록이 계속 동작합니다 |
+| `ACTIVITY_IMPORT_LLM_PROVIDER` | 선택 | LLM 공급자 이름(기본값 `anthropic`). 알 수 없는 값이면 꺼짐으로 안전하게 처리됩니다 |
+| `ACTIVITY_IMPORT_LLM_MODEL` | 선택 | LLM 보조가 쓸 모델 이름(기본값 `claude-haiku-4-5-20251001`) |
+| `ACTIVITY_IMPORT_SSRF_TEST_ALLOWLIST` | **테스트 전용, 운영에 절대 설정하지 마세요** | SSRF 차단을 건너뛸 호스트명(쉼표 구분). Playwright E2E가 로컬 픽스처 서버를 가져오기 위해 `playwright.config.ts`에만 설정합니다 |
 
 실제 비밀값은 `.env.example`에 넣지 않습니다 — 로컬 데모 키(위 anon/service-role 키)는 고정값이라
 괜찮지만, 클라우드 프로젝트로 전환하면 그 프로젝트의 실제 키로 교체해야 합니다.

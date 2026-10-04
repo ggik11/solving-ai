@@ -494,6 +494,103 @@ grant를 전혀 건드리지 못한다 — `revoke ... from public`을 백날 �
    옛 시그니처를 `drop function if exists public.함수명(옛 타입 목록);`으로 먼저 지운 뒤
    `create or replace`로 새 시그니처를 만든다.
 
+## 14. 링크 붙여넣기 활동 등록 — 추출·검증·점검 흐름
+
+사용자 요청으로 추가한 기능. 목표는 "주최기관 공식 공고 URL만 붙여넣으면 빠르고 정확하게
+활동을 등록"하는 것이며, **날짜와 링크는 AI가 만들어내지 않는다**는 원칙을 전체 설계의 중심에
+둔다.
+
+### 14.1 전체 흐름
+
+```
+URL 입력 (관리자 활동 등록 화면 또는 /activities/submit)
+  → check_url_fetch_rate_limit() RPC (시간당 제한)
+  → fetchSinglePage() — SSRF 방어 + robots.txt 확인 + 리다이렉트 매 홉 재검사
+  → extractStructuredData() + extractDateCandidates() — 규칙 기반, HTML → 평문 변환 후 처리
+  → (선택, API 키가 있을 때만) LLM 보조 — 제목/주최/태그/유형/자격요약 "후보"만, 날짜는 절대 받지 않음
+  → buildPreviewFromHtml() — 규칙 기반 값 우선, LLM은 빈 값만 보충, 중복 후보·기간 이슈 계산
+  → 미리보기 화면(UrlImportPanel) — 추출값 + 원문 근거 문장 + 중복 후보를 보여주고,
+    운영자/사용자가 필드별로 "적용"해야만 폼에 반영됨(자동 저장 없음)
+  → 운영자/사용자가 수정 → 등록(관리자는 즉시 공개 가능, 사용자 제보는 항상 draft → 운영자 승인)
+```
+
+관련 모듈은 모두 `src/lib/activity-import/`에 있다: `ssrf.ts`/`fetch.ts`/`robots.ts`(가져오기·
+SSRF 방어), `html-text.ts`/`extract.ts`(규칙 기반 추출), `verify.ts`(검증 규칙), `duplicates.ts`
+(중복 후보), `llm.ts`(선택적 LLM 보조), `preview.ts`(위 조각을 조립하는 오케스트레이션),
+`link-check.ts`(정기 점검용 재확인 로직).
+
+### 14.2 SSRF 방어 — "한 페이지만, 안전한 호스트로만"
+
+`fetchSinglePage()`는 목록 페이지를 따라가며 여러 공고를 긁지 않는다 — 호출자가 준 URL 정확히
+하나만 가져온다. http/https 외 스킴, 사설/예약/루프백/링크 로컬(169.254.169.254 클라우드
+메타데이터 포함) IPv4·IPv6 대역, `localhost`류 호스트명을 차단한다(`ssrf.ts`). **리다이렉트는
+매 홉마다 호스트를 처음부터 다시 검사**한다 — 공개 호스트가 응답 시점에 내부 IP로 리다이렉트하는
+공격을 막기 위함이다. DNS 조회·HTTP 요청 둘 다 주입 가능해(`FetchDeps`) 단위 테스트가 실제
+네트워크 없이 이 시나리오들을 검증한다. 응답 크기·시간 제한, `Content-Type: text/html` 아니면
+거부, robots.txt 확인(없으면 허용으로 간주), 식별 가능한 User-Agent를 쓴다.
+
+E2E가 이 보호 장치를 브라우저로 직접 검증하려면 로컬 고정 포트의 픽스처 서버(127.0.0.1)를
+가져와야 하는데, 그 주소 자체가 차단 대상이라 `ACTIVITY_IMPORT_SSRF_TEST_ALLOWLIST` 환경변수
+(테스트 전용, `playwright.config.ts`에만 설정)로 특정 호스트의 차단만 예외적으로 건너뛴다 —
+운영 배포 경로에는 이 환경변수를 설정하지 않으므로 영향이 없다(13장의 `SUPABASE_DB_URL`과
+같은 "테스트 하네스 전용" 패턴).
+
+### 14.3 추출과 검증 — 규칙 우선, AI는 선택
+
+1. **구조화 데이터 우선**: JSON-LD → `og:` meta → `title`/`meta description` 순으로 제목·
+   주최기관·설명을 고른다.
+2. **한국어 날짜는 규칙 기반 정규식**으로 찾는다(`2026.10.31.`, `2026년 10월 31일(금)`,
+   `10월 31일(금)`, `~10/31`, `2026-10-31 18:00` 등). 각 후보는 **원문 근거 문장**(같은 줄
+   안에서 전후 30자)과 함께 반환되고, 주변 키워드("접수시작/마감" 등)로 접수 시작/마감 역할을
+   추정한다(힌트일 뿐 — 최종 확정은 운영자). 연도가 본문에 없으면 "이미 90일 넘게 지났으면
+   내년으로 본다"는 결정적 규칙으로 추정하고 `yearInferred`로 별도 표시한다 — AI가 지어낸 값이
+   아니라 규칙 기반 추정임을 구분한다.
+3. **LLM 보조는 선택**(`ACTIVITY_IMPORT_LLM_API_KEY` 환경변수가 있을 때만 켜짐, 서비스 키 1개,
+   사용자 키 입력 없음). 제목·주최기관·태그·유형·자격 요약 **후보만** 제안하며, 시스템 프롬프트로
+   날짜 제안을 명시적으로 금지하고, 응답에 날짜 필드가 와도 스키마에 없어 버려진다. 네트워크
+   오류·타임아웃·파싱 실패 등 어떤 이유로든 예외를 던지지 않고 `null`을 반환해, 키가 없거나
+   호출이 실패해도 규칙 기반 추출 + 수동 입력만으로 등록이 계속된다. 공급자는 인터페이스로
+   추상화돼 있어 교체 가능하다.
+4. **검증**: `verifyDateAgainstText()`가 날짜 문자열이 원문에 실제로 있는지 대조한다(공백 차이만
+   무시). `checkDateRangeIssues()`는 기간 역전·지나치게 과거/미래·시각 없음(날짜만)을 표시만
+   하고 저장을 막지는 않는다 — **기존 날짜 정밀도 규칙**(`format.ts`의 "KST 자정 = 날짜만 입력된
+   값")과 **모집 상태 계산**(`getApplyPhase`가 저장된 `apply_end_at`으로 계산)은 그대로 유지된다.
+5. **중복 후보**: 정규화된 URL(dedupe 키)·제목·주최기관으로 기존 활동과 겹치는지 찾아 미리보기에
+   보여준다(`duplicates.ts`).
+
+화면에서 "검증됨 ↔ 원문 확인 필요" 상태를 실제로 추적하는 것은 **접수 마감 필드 하나**다 — 날짜
+후보를 "적용"하면 그 원문 문자열이 폼 상태(`applyEndAtEvidence`)에 남아 "원문에서 확인됨"으로
+표시되고, 그 상태에서 입력값을 직접 고치면 즉시 "직접 입력됨 — 원문 확인 필요"로 바뀐다. 이
+문자열이 그대로 `activities.apply_end_at_evidence`에 저장되어 정기 점검(14.4절)의 재확인 근거가
+된다.
+
+### 14.4 정기 점검 — 매칭 워커와 다른 이유
+
+매칭 워커(`run_match_worker`)는 pg_cron이 DB 안에서 직접 실행하지만, 링크 점검은 **외부 호스트로
+나가는 실제 HTTP 요청**이 필요해 Postgres 혼자서는(pg_net 같은 확장 없이는) 할 수 없다. 그래서:
+
+- DB는 "점검할 활동을 안전하게 나눠주고(claim)" "결과를 기록하는" 두 함수만 담당한다
+  (마이그레이션 `20261004100000`):
+  - `claim_activities_for_link_check(limit, as_of, stale_after_hours=20)` — `FOR UPDATE SKIP
+    LOCKED`로 후보를 잠그고 **같은 트랜잭션 안에서 즉시 `last_verification_attempt_at`을 찍어
+    반환**한다(matching 워커의 SKIP LOCKED claim 패턴과 동일한 원칙) — 워커가 겹쳐 실행되거나
+    재시도돼도 같은 활동을 두 번 점검하지 않는다. `last_verification_attempt_at`이 없거나
+    `stale_after_hours`(기본 20시간)보다 오래된 활동만 후보가 되므로, 외부 스케줄러가 하루에
+    여러 번 호출해도 실제로는 하루 1회만 점검된다.
+  - `record_link_check_result(activity_id, ok, resolved_url?, note?)` — 정상이면
+    `last_verified_at` 갱신 + `needs_verification` 해제, 비정상이면 `needs_verification=true` +
+    `verification_note` 기록 + 운영자 알림(활동 단위 `dedupe_key`로 중복 억제 — 같은 문제가
+    매일 이어져도 알림 1건만 유지되고 내용만 갱신된다).
+  - 둘 다 `service_role` 전용 — `anon`/`authenticated`에게 절대 열지 않는다(13장 3번 규칙).
+- 실제 가져오기는 `src/app/api/cron/link-check/route.ts`(Next.js Route Handler)가 수행한다 —
+  `fetchSinglePage`를 그대로 재사용하므로 SSRF 방어가 동일하게 적용된다. 응답이 정상이고(2xx,
+  HTML) `apply_end_at_evidence`가 있으면 그 문자열이 페이지에서 여전히 발견되는지까지 확인한다.
+  **원문 전문은 저장하지 않으므로** 매번 새로 가져와 그 자리에서만 비교하고 버린다.
+- `CRON_SECRET` 환경변수로 보호되며, 없으면 모든 요청을 거부한다(기본값이 "닫힘"). 운영 배포는
+  외부 스케줄러(Vercel Cron Job 등)가 이 엔드포인트를 하루 1회 호출하도록 등록해야 한다(이
+  저장소에서 실제로 등록하지는 않았다 — README "활동 URL 가져오기 / 링크 정기 점검" 참조).
+  로컬 확인용으로 `npm run worker:link-check`(`scripts/run-link-check-worker.mjs`)도 제공한다.
+
 ## 변경 이력
 
 - 2026-10-03: 1단계(설계) 초안 작성. 코드 없음.
@@ -503,3 +600,4 @@ grant를 전혀 건드리지 못한다 — `revoke ... from public`을 백날 �
   3. **엔티티 보완** (4장): 지시서 11장의 엔티티 수를 "22개"에서 실제 목록 기준 "24개"로 정정(집계 오류 수정)하고, 운영/설정 그룹으로 `majors`(운영자 편집 가능, `is_demo` 플래그), `app_settings`(허용 이메일 도메인, 추천 가중치, 매칭 수락 기한), `user_roles`(관리자 권한, 프로필과 분리), `notifications.dedupe_key`(알림 중복 발송 방지 키)를 추가. 10장 2단계 완료 기준의 엔티티 수 표기도 동기화.
 - 2026-10-04: 4-A단계(팀 채팅 + 앱 내 알림) 구현. 11장 신설 — DB 함수 경유 쓰기, Realtime 전달 방식을 postgres_changes에서 Broadcast-from-Database로 변경한 이유와 설계(수동 검증으로 "private 채널은 Postgres Changes에 적용되지 않는다"는 사실을 발견), 알림 방 단위 묶음·"보고 있으면 생성 안 함" 근사 구현, 탈퇴·강퇴 시 접근 차단(이미 열려 있는 연결 포함) 메커니즘, 메시지 링크화 방식을 기록.
 - 2026-10-04: 4-B단계(빠른 매칭) 구현. 12장 신설 — 역할 구성 템플릿 스키마, 매칭 알고리즘을 TS 순수 함수(단위 테스트)와 plpgsql(실제 워커 경로, pg_cron이 Node를 호출할 수 없어 독립 재구현)로 이원화한 설계와 근거, 전체 공통 시간을 PostgreSQL 멀티레인지 연산자로 계산하는 방법, run_match_worker의 3단계 처리와 동시성 보장(SKIP LOCKED + 행 잠금 멱등 가드), 실제 구현 기준 상태 전이, Realtime 접근 차단 재검토(docs/operations.md로 연결) 기록.
+- 2026-10-04: 링크 붙여넣기 활동 등록 구현. 13장에 "함수 파라미터 개수를 바꿀 때는 옛 시그니처를 먼저 drop해야 한다"는 규칙 추가(실제로 겪은 버그). 14장 신설 — SSRF 방어가 적용된 단일 페이지 가져오기, 규칙 우선·AI 선택인 추출·검증 흐름, 날짜 검증 상태를 실제로 추적하는 방식(접수 마감 필드), 매칭 워커와 달리 외부 HTTP가 필요해 pg_cron 대신 Route Handler + 외부 스케줄러로 구현한 정기 점검의 이유와 설계를 기록.

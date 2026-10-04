@@ -153,7 +153,7 @@ export async function runUrlImportPreview(supabase: SupabaseClient, rawUrl: stri
   return { ok: true, data };
 }
 
-function describeFetchError(err: FetchSinglePageError): string {
+export function describeFetchError(err: FetchSinglePageError): string {
   switch (err.reason) {
     case "UNSUPPORTED_SCHEME":
       return "http(s) URL만 가져올 수 있어요.";

@@ -18,7 +18,7 @@ export default async function AdminActivitiesPage() {
   const supabase = await createClient();
   const { data: activities } = await supabase
     .from("activities")
-    .select("id, title, status, is_demo, apply_end_at")
+    .select("id, title, status, is_demo, apply_end_at, needs_verification, verification_note")
     .order("created_at", { ascending: false });
 
   return (
@@ -41,10 +41,16 @@ export default async function AdminActivitiesPage() {
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="font-medium">{activity.title}</span>
-                <Badge variant={activity.status === "published" ? "success" : "neutral"}>
-                  {STATUS_LABEL[activity.status as ActivityStatus]}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  {activity.needs_verification && <Badge variant="danger">원문 확인 필요</Badge>}
+                  <Badge variant={activity.status === "published" ? "success" : "neutral"}>
+                    {STATUS_LABEL[activity.status as ActivityStatus]}
+                  </Badge>
+                </div>
               </div>
+              {activity.needs_verification && activity.verification_note && (
+                <p className="text-xs text-[var(--color-danger)]">정기 점검: {activity.verification_note}</p>
+              )}
               <p className="text-xs text-[var(--color-muted-foreground)]">마감 {formatKst(activity.apply_end_at)}</p>
               <div className="flex flex-wrap gap-2 text-sm">
                 <Link href={`/admin/activities/${activity.id}/edit`} className="rounded-md border border-[var(--color-border)] px-3 py-1.5">

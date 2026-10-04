@@ -56,7 +56,7 @@ function DateCandidateRow({
           원문에서 확인됨
         </span>
         {candidate.yearInferred && (
-          <span className="rounded bg-[var(--color-warning-bg,#fff3cd)] px-1.5 py-0.5 text-xs text-[var(--color-warning,#8a6500)]">
+          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">
             연도 추정됨 — 확인 필요
           </span>
         )}
@@ -115,7 +115,7 @@ export function UrlImportPanel({ previewAction, onApply, enabledFields, duplicat
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-muted,#f8f9fb)] p-3">
+    <div className="flex flex-col gap-3 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3">
       <div className="flex flex-col gap-2 sm:flex-row">
         <input
           value={url}
@@ -197,7 +197,7 @@ export function UrlImportPanel({ previewAction, onApply, enabledFields, duplicat
           </div>
 
           {result.rangeIssues.length > 0 && (
-            <ul className="flex flex-col gap-1 rounded-md bg-[var(--color-warning-bg,#fff3cd)] p-2 text-xs text-[var(--color-warning,#8a6500)]">
+            <ul className="flex flex-col gap-1 rounded-md bg-amber-100 p-2 text-xs text-amber-800">
               {result.rangeIssues.map((issue) => (
                 <li key={issue}>{DATE_RANGE_ISSUE_LABEL[issue]}</li>
               ))}

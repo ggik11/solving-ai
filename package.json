@@ -14,7 +14,8 @@
     "db:start": "supabase start",
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
-    "worker:match": "node scripts/run-match-worker.mjs"
+    "worker:match": "node scripts/run-match-worker.mjs",
+    "worker:link-check": "node scripts/run-link-check-worker.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
