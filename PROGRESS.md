@@ -436,7 +436,48 @@ SSRF / 추출·검증 / 화면 / 정기 점검)마다 커밋한다.
   거부, 정지된 계정 거부. `tests/rls/execute_privileges.test.ts` 허용 목록에 새 함수 추가.
   `npm test` **208/208 통과**, `lint`·`typecheck`·`build` 모두 성공.
 
-### 2/4: 추출·검증 (예정)
+### 2/4: 추출·검증 (완료)
+
+- **HTML → 평문 (`src/lib/activity-import/html-text.ts`):** DOM 파서 의존성을 새로 추가하지
+  않고 정규식으로 `<script>`/`<style>`/주석을 제거하고, 블록 태그 경계는 개행으로 보존해(문장
+  경계 유지) 날짜 추출·근거 문장 표시에 쓸 평문을 만든다. HTML 엔티티(`&amp;`, `&#44;` 등)를
+  디코딩한다.
+- **구조화 데이터 추출 (`extract.ts`):** JSON-LD(`<script type="application/ld+json">`, 배열/
+  `@graph` 평탄화, 깨진 JSON은 그 블록만 무시), `og:title`/`og:description`/`description` meta,
+  `<title>`, `<link rel="canonical">`를 규칙 기반으로 뽑는다.
+- **한국어 날짜 후보 추출 (`extract.ts`):** `2026.10.31.`, `2026. 10. 31.`, `2026-10-31 18:00`,
+  `2026년 10월 31일(금)`, `10월 31일(금)`(연도 없음), `~10/31`(연도 없음) 형식을 규칙 기반
+  정규식으로 찾는다. 더 구체적인(연도 포함) 패턴이 먼저 선점한 구간은 덜 구체적인 패턴이 다시
+  매칭하지 않도록 겹침을 검사한다. 각 후보는 **원문 근거 문장**(같은 줄 안에서 전후 30자,
+  문단 경계를 넘지 않음)과 함께 반환되고, "접수시작/마감" 류 키워드·`~` 접두사로 `apply_start/
+  apply_end/unknown` 역할을 추정한다(어디까지나 미리보기에서 운영자가 보는 힌트일 뿐, 최종
+  확정은 운영자가 한다). **연도가 본문에 없으면** "이미 90일 넘게 지난 날짜면 내년으로 본다"는
+  결정적 규칙으로 추정하고 `yearInferred: true`로 표시해 "AI가 지어낸 값"과 구분한다.
+  - **구현 중 발견한 버그:** 근거 문장(context) 윈도우를 줄 경계 없이 ±30자로만 잘랐다가,
+    바로 다음 문단의 "모집 마감" 같은 키워드가 앞 문단의 "모집 시작" 날짜의 context에 섞여
+    들어가 역할이 반대로 분류되는 버그가 있었다(단위 테스트로 발견). context를 같은 줄(문단)
+    경계 안으로만 clamp하도록 고쳤다.
+- **검증 규칙 (`verify.ts`):** `verifyDateAgainstText(raw, sourceText)` — 공백 차이만 무시하고
+  원문에 그 문자열이 그대로 있는지 대조한다(LLM이 제안했든 추출기가 찾았든 동일 기준). 날짜는
+  이 검증을 통과하지 못하면 "원문 확인 필요"로 표시한다. `checkDateRangeIssues()` — 시작>마감,
+  마감이 지나치게 과거/미래(`app_settings`로 조정 가능한 기본값: 과거 14일, 미래 548일), 마감이
+  KST 자정(시각 없음)인지를 표시만 하고 저장을 막지는 않는다(`format.ts`의 기존 날짜 정밀도
+  규칙 — "자정=날짜만 입력"을 그대로 재사용하도록 `isKstMidnight`을 공유 헬퍼로 뽑았다). 모집
+  상태는 여전히 저장된 `apply_end_at`으로 DB(`getApplyPhase`)가 계산하며 이 검증과 무관하다.
+- **중복 후보 (`duplicates.ts`):** 정규화된 URL(dedupe 키)·제목(공백/구두점 무시)·주최기관으로
+  기존 활동과 겹치는지 찾는다. 주최기관만 같은 것은 신호가 약해(흔한 기관명) 제목까지 함께
+  맞을 때만 근거로 센다.
+- **LLM 보조(선택, 기본 꺼짐) (`llm.ts`):** `ACTIVITY_IMPORT_LLM_API_KEY` 환경변수가 없으면
+  `getLlmProvider()`가 `null`을 반환해 전체 흐름이 규칙 기반 추출 + 수동 입력만으로 계속
+  동작한다. 키가 있으면 기본 공급자(Anthropic Messages API)가 제목·주최기관·태그·유형·자격
+  요약 **후보만** 제안하고, **날짜는 시스템 프롬프트로 명시적으로 금지**하며 응답에 날짜 필드가
+  와도(`applyEndAt` 등) 스키마에 없으므로 버린다. 네트워크 오류·타임아웃·JSON 파싱 실패·빈
+  응답 등 어떤 이유로든 예외를 던지지 않고 `null`을 반환한다(호출자는 "LLM 없이 계속"과
+  동일하게 처리). 공급자는 인터페이스(`LlmExtractionProvider`)로 추상화돼 있어 교체 가능.
+- **검증:** 단위 테스트 102건(`tests/unit/activity-import/{html-text,extract,verify,duplicates,
+  llm}.test.ts`), HTML 픽스처 2개(`tests/unit/fixtures/activity-import/notice-*.html`)로 실제
+  공고 페이지 모양을 흉내냈다. `npm test` **248/248 통과**, `lint`·`typecheck` 모두 성공.
+
 ### 3/4: 화면 (예정)
 ### 4/4: 정기 점검 (예정)
 

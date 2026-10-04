@@ -1,5 +1,21 @@
 const KST_TIME_ZONE = "Asia/Seoul";
 
+/** KST 기준 00:00인지("날짜만 입력된 값") 확인한다. 여러 모듈(표시용 포맷터, URL 가져오기
+ * 날짜 정밀도 검증)이 같은 기준을 써야 하므로 공유 헬퍼로 분리했다. */
+export function isKstMidnight(iso: string | null | undefined): boolean {
+  if (!iso) return false;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return false;
+  const parts = new Intl.DateTimeFormat("ko-KR", {
+    timeZone: KST_TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return get("hour") === "00" && get("minute") === "00";
+}
+
 /**
  * KST 기준으로 날짜를 표시한다. 시각이 자정(00:00 KST)이면 "날짜만 입력된 값"으로 보고
  * 날짜만 표시하고, 그 외에는 날짜+시간을 함께 표시한다(지시서: "날짜 정밀도 반영").
@@ -21,7 +37,7 @@ export function formatKst(iso: string | null | undefined): string {
 
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
   const dateOnly = `${get("year")}.${get("month")}.${get("day")}`;
-  const isMidnight = get("hour") === "00" && get("minute") === "00";
+  const isMidnight = isKstMidnight(iso);
 
   return isMidnight ? `${dateOnly} (KST)` : `${dateOnly} ${get("hour")}:${get("minute")} (KST)`;
 }
