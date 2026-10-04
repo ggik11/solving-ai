@@ -81,11 +81,18 @@ describe("빠른 매칭 — DB 함수/워커", () => {
     });
     expect(join2Error).toBeNull();
 
-    // run_match_worker는 대기 중인 모든 (활동,템플릿) 그룹을 한 번에 처리하므로(다른 테스트
-    // 파일의 그룹, pg_cron의 백그라운드 틱과 공유됨), 전역 new_proposals 카운트는 이 활동
-    // 하나에 대한 기대값과 직접 비교할 수 없다(실제로 레이스로 flaky했다) — activity_id로
-    // 좁혀서 검증한다(다른 테스트 파일들과 동일한 패턴).
-    await runWorker();
+    // run_match_worker는 대기 중인 모든 (활동,템플릿) 그룹을 한 번에 처리하므로, 전역
+    // new_proposals 카운트를 이 활동 하나의 기대값과 직접 비교하려면 두 가지가 보장돼야 한다:
+    // (1) 이 호출과 겹쳐 워커를 또 실행하는 다른 주체가 없어야 한다 — pg_cron이 매분 같은
+    //     함수를 백그라운드로도 호출하므로, tests/global-setup.ts가 테스트 스위트 동안 그
+    //     cron 작업을 내려둔다(스위트가 끝나면 복원).
+    // (2) 다른 테스트가 남긴 미처리 대기열이 없어야 한다 — match_proposal_members.queue_id
+    //     FK에 ON DELETE CASCADE가 빠져 있어서(실제로 발견한 버그, 마이그레이션
+    //     20261004040000로 수정) activity 삭제가 조용히 실패하면 "탈락한 후보"의 waiting
+    //     행이 다음 워커 실행에 다시 집계되어 이 숫자가 흔들렸다. 두 원인 모두 고친 뒤에는
+    //     전역 카운트를 그대로 단언해도 안전하다(반복 실행으로 확인함, PROGRESS.md 참조).
+    const result = await runWorker();
+    expect(result.new_proposals).toBe(1);
 
     const admin = createAdminClient();
     const { data: proposals } = await admin.from("match_proposals").select("id, status").eq("activity_id", activityId);

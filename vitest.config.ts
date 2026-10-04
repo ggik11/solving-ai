@@ -14,6 +14,7 @@ export default defineConfig({
     include: ["tests/unit/**/*.test.{ts,tsx}", "tests/rls/**/*.test.ts"],
     exclude: ["tests/e2e/**"],
     setupFiles: ["./tests/setup.ts"],
+    globalSetup: ["./tests/global-setup.ts"],
     hookTimeout: 30000,
     testTimeout: 30000,
     // tests/rls는 공유된 로컬 Supabase 인스턴스 상태에 의존하고, 동일 이메일에 대한
