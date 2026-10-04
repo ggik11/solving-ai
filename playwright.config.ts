@@ -28,5 +28,12 @@ export default defineConfig({
     url: "http://127.0.0.1:3000",
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
+    env: {
+      ...process.env,
+      // 테스트 전용 SSRF 허용 목록(src/lib/activity-import/fetch.ts 참고) — URL 가져오기 E2E가
+      // 로컬 고정 포트의 픽스처 서버를 실제로 가져와 검증할 수 있게 한다. 운영 배포에는 이
+      // 환경변수를 설정하지 않는다.
+      ACTIVITY_IMPORT_SSRF_TEST_ALLOWLIST: "127.0.0.1,localhost",
+    },
   },
 });

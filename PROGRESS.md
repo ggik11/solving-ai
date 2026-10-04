@@ -478,7 +478,62 @@ SSRF / 추출·검증 / 화면 / 정기 점검)마다 커밋한다.
   llm}.test.ts`), HTML 픽스처 2개(`tests/unit/fixtures/activity-import/notice-*.html`)로 실제
   공고 페이지 모양을 흉내냈다. `npm test` **248/248 통과**, `lint`·`typecheck` 모두 성공.
 
-### 3/4: 화면 (예정)
+### 3/4: 화면 (완료)
+
+- **스키마 확장 (마이그레이션 `20261004090000`):** `activities`에 `source_url_resolved`(가져오기
+  시점 최종 리다이렉트 URL), `apply_end_at_evidence`(접수 마감일을 뽑은 원문 문자열 — 정기
+  점검 워커가 재확인에 쓴다), `needs_verification`/`verification_note`(정기 점검 워커(4/4)만
+  관리하는 운영 플래그, 등록 시 항상 기본값으로 시작)를 추가했다. `submit_activity()`에 날짜 4개
+  + 가져오기 메타데이터 2개를 **끝에 기본값 `null`로 추가**해 기존 호출자와 호환되게 했다.
+  - **구현 중 발견한 버그(실제로 중요함):** PostgreSQL에서 함수의 "신원"은 이름+파라미터
+    타입 전체라서, `create or replace function submit_activity(...)`를 파라미터 **개수가
+    다른** 시그니처로 다시 정의하면 기존 함수를 대체하는 게 아니라 **오버로드로 새로 추가**된다
+    — 옛 8-인자 버전이 `anon`/`authenticated` 권한을 그대로 쥔 채 조용히 남아있었다.
+    `tests/rls/execute_privileges.test.ts`(5-B 보안 마무리에서 만든 전수 가드)가 이걸 즉시
+    잡아냈다. `drop function if exists ...(옛 시그니처)`를 먼저 실행하도록 고쳤다 — 앞으로
+    함수 파라미터 개수를 바꿀 때마다 반드시 거쳐야 하는 패턴으로 `docs/architecture.md` 13장에
+    추가했다.
+- **공유 오케스트레이션 (`src/lib/activity-import/preview.ts`):** `buildPreviewFromHtml()`(순수
+  함수 — 이미 가져온 HTML/기존 활동 목록을 받아 미리보기 데이터 조립, 단위 테스트 대상)과
+  `runUrlImportPreview()`(실제 I/O: 빈도 제한 RPC → SSRF 안전 가져오기 → 기존 활동 조회 →
+  선택적 LLM 호출 → 조립)로 나눴다. 규칙 우선순위는 JSON-LD > `og:` > `meta`/`title`이고, LLM
+  제안은 규칙 기반 값이 전부 비어 있을 때만 보충한다.
+- **서버 액션:** `src/app/admin/activities/import-url-actions.ts`(관리자 — `isCurrentUserAdmin()`
+  재확인, 페이지 레이아웃의 인가 검사는 서버 액션 직접 호출을 막지 않으므로 액션 자체에서도
+  검사), `src/app/activities/submit/import-url-actions.ts`(로그인 사용자 — 실제 빈도 제한은
+  DB의 `check_url_fetch_rate_limit()`가 담당).
+- **화면 (`src/components/UrlImportPanel.tsx`, 관리자·사용자 제보 화면 공유):** URL 입력 →
+  "URL로 가져오기" → 추출된 제목/주최기관/설명/(AI 제안 시)태그·유형·자격요약을 "적용" 버튼으로
+  개별 반영, 날짜 후보마다 **원문 근거 문장**과 "원문에서 확인됨" 배지(+연도 추정 시 별도
+  경고), 대상 필드(접수시작/마감/활동시작/종료)를 골라 "이 값으로 적용", 기간 이슈 경고,
+  URL·제목·주최기관 기준 중복 후보 목록을 보여준다. 어떤 것도 자동으로 저장되지 않고 운영자/
+  사용자가 "적용"을 눌러야 폼에 반영된다. **"검증됨 ↔ 원문 확인 필요" 표시는 접수 마감 필드에
+  한해 실제로 추적한다** — 날짜 후보를 "적용"하면 그 원문 문자열이 `applyEndAtEvidence`로
+  폼 상태에 저장되고 입력창 아래 "원문에서 확인됨: “...”"로 보여지며, 그 상태에서 **운영자가
+  접수 마감을 직접 다시 고치면** 근거가 즉시 비워지고 "직접 입력됨 — 원문 확인 필요"로
+  바뀐다(`handleApplyEndAtInputChange`). 이 근거 문자열이 `apply_end_at_evidence` 컬럼에
+  저장되어 정기 점검 워커(4/4)가 재확인에 쓴다.
+  - `ActivityForm.tsx`(관리자, 모든 필드 지원 + 중복 후보에 수정 화면 링크)와
+    `SubmitActivityForm.tsx`(사용자 제보 — 기존에 날짜 입력 자체가 없었어서 접수 시작/마감
+    필드를 이번에 새로 추가했다)에 공통 패널을 꽂았다.
+- **E2E 테스트 네트워크 문제와 해결(투명하게 기록):** SSRF 방어(1/4)가 `localhost`/사설 IP를
+  막는 것은 의도한 동작이지만, 그래서 브라우저로 "URL 붙여넣기 → 가져오기"를 실제로 검증하려면
+  로컬 고정 포트의 픽스처 서버(127.0.0.1)를 가져와야 하는데 바로 그 주소가 차단 대상이다.
+  **해결:** `ACTIVITY_IMPORT_SSRF_TEST_ALLOWLIST` 환경변수(쉼표 구분 호스트명)가 설정된
+  경우에만 그 호스트의 차단을 건너뛰는 예외를 `fetch.ts`에 추가했다 — 기본값은 "미설정"이며
+  미설정이면 기존 차단 로직과 100% 동일하게 동작한다(단위 테스트로 "허용 목록이 있어도 목록에
+  없는 사설 IP는 그대로 차단됨"까지 확인). 이 환경변수는 `playwright.config.ts`의 `webServer.env`
+  에만 설정해 **운영 배포 경로에는 전혀 영향이 없다**(`SUPABASE_DB_URL`이 테스트 하네스 전용인
+  것과 같은 패턴). `tests/e2e/fixture-server.ts`(Node 내장 `http` 모듈만 사용, 새 의존성 없음)가
+  127.0.0.1의 임의 빈 포트에 고정 HTML을 서빙한다.
+- **검증:** 단위 테스트 7건 추가(`preview.test.ts` 5건 + `fetch.test.ts` SSRF 허용목록 2건,
+  총 **265건**), RLS 테스트 5건(`tests/rls/url_import_submit.test.ts` — 날짜·메타데이터 저장,
+  기본 호출 호환성, 기간 역전 거부, XSS 방어 유지, 오버로드 잔존 회귀), E2E 1건
+  (`tests/e2e/activity-url-import-flow.spec.ts` — 관리자 로그인 → URL 가져오기 → 제목/날짜
+  적용 → 요약 직접 수정 → 공개로 등록 → `/admin/activities`·`/activities` 양쪽에 표시 확인).
+  `npm test` **260/260 통과**, Playwright 전체 **9/9 통과**(기존 8개 전부 회귀 없음),
+  `lint`·`typecheck`·`build` 모두 성공.
+
 ### 4/4: 정기 점검 (예정)
 
 ## 다음 명령 (사용자 승인 시)

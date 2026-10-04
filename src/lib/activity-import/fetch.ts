@@ -73,11 +73,31 @@ function stripBrackets(host: string): string {
   return host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
 }
 
+/**
+ * **테스트 전용 예외.** `ACTIVITY_IMPORT_SSRF_TEST_ALLOWLIST` 환경변수(쉼표 구분 호스트명)가
+ * 설정된 경우에만, 그 목록에 있는 호스트는 아래 SSRF 차단을 건너뛴다. E2E가 "관리자가 URL을
+ * 붙여넣음 → 가져옴" 흐름을 실제로 검증하려면 로컬 고정 포트의 픽스처 서버(127.0.0.1)를 가져와야
+ * 하는데, 그 주소 자체가 바로 이 기능이 차단해야 하는 대상이라 이 예외가 없으면 전체 플로우를
+ * 브라우저로 검증할 방법이 없다. 운영 환경에서는 이 환경변수를 절대 설정하지 않는다 — 기본값은
+ * "미설정"이고, 미설정이면 이 함수는 원래와 똑같이 동작한다(Playwright 설정에서만 지정됨,
+ * `playwright.config.ts` 참고).
+ */
+function isTestAllowedHost(hostname: string): boolean {
+  const raw = process.env.ACTIVITY_IMPORT_SSRF_TEST_ALLOWLIST;
+  if (!raw) return false;
+  const allowed = raw
+    .split(",")
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean);
+  return allowed.includes(hostname.toLowerCase());
+}
+
 async function assertHostIsSafe(url: URL, resolveHost: ResolveHostFn): Promise<void> {
   if (!isAllowedScheme(url)) {
     throw new FetchSinglePageError("UNSUPPORTED_SCHEME", `지원하지 않는 스킴입니다: ${url.protocol}`);
   }
   const hostname = url.hostname;
+  if (isTestAllowedHost(hostname)) return;
   if (isObviouslyBlockedHostname(hostname)) {
     throw new FetchSinglePageError("BLOCKED_HOST", `차단된 호스트입니다: ${hostname}`);
   }

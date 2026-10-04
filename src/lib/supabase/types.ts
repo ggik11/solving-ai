@@ -81,6 +81,10 @@ export interface Activity {
   is_demo: boolean;
   created_by: string | null;
   last_verified_at: string | null;
+  source_url_resolved: string | null;
+  apply_end_at_evidence: string | null;
+  needs_verification: boolean;
+  verification_note: string | null;
   created_at: string;
   updated_at: string;
 }

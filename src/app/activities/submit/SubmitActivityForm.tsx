@@ -2,6 +2,15 @@
 
 import { useState } from "react";
 import { submitActivityAction } from "./actions";
+import { previewActivitySubmissionUrlAction } from "./import-url-actions";
+import { UrlImportPanel, type UrlImportApplyAction } from "@/components/UrlImportPanel";
+
+function toDateTimeLocalFromIso(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 
 export function SubmitActivityForm() {
   const [title, setTitle] = useState("");
@@ -9,11 +18,48 @@ export function SubmitActivityForm() {
   const [description, setDescription] = useState("");
   const [orgName, setOrgName] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
+  const [sourceUrlResolved, setSourceUrlResolved] = useState("");
   const [locationType, setLocationType] = useState<"online" | "offline" | "hybrid">("offline");
   const [region, setRegion] = useState("");
   const [participationMode, setParticipationMode] = useState<"solo" | "team" | "both">("both");
+  const [applyStartAt, setApplyStartAt] = useState("");
+  const [applyEndAt, setApplyEndAt] = useState("");
+  const [applyEndAtEvidence, setApplyEndAtEvidence] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  function handleApplyEndAtInputChange(value: string) {
+    setApplyEndAt(value);
+    setApplyEndAtEvidence("");
+  }
+
+  function handleImportApply(action: UrlImportApplyAction) {
+    switch (action.kind) {
+      case "title":
+        setTitle(action.value);
+        break;
+      case "orgName":
+        setOrgName(action.value);
+        break;
+      case "description":
+        setDescription(action.value);
+        break;
+      case "sourceUrl":
+        setSourceUrl(action.value);
+        setSourceUrlResolved(action.resolved);
+        break;
+      case "date": {
+        const local = toDateTimeLocalFromIso(action.iso);
+        if (action.field === "applyEndAt") {
+          setApplyEndAt(local);
+          setApplyEndAtEvidence(action.raw);
+        } else if (action.field === "applyStartAt") {
+          setApplyStartAt(local);
+        }
+        break;
+      }
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -25,6 +71,7 @@ export function SubmitActivityForm() {
     setSubmitting(true);
     const result = await submitActivityAction({
       title, summary, description, orgName, sourceUrl, locationType, region, participationMode,
+      applyStartAt, applyEndAt, sourceUrlResolved, applyEndAtEvidence,
     });
     setSubmitting(false);
     if (!result.ok) setError(result.error);
@@ -32,6 +79,11 @@ export function SubmitActivityForm() {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+      <UrlImportPanel
+        previewAction={previewActivitySubmissionUrlAction}
+        onApply={handleImportApply}
+        enabledFields={["title", "orgName", "description", "sourceUrl", "date"]}
+      />
       {error && (
         <p role="alert" className="rounded-md bg-[var(--color-danger-bg)] px-3 py-2 text-sm text-[var(--color-danger)]">
           {error}
@@ -112,6 +164,31 @@ export function SubmitActivityForm() {
           <option value="team">팀 참여</option>
           <option value="both">개인·팀 모두 가능</option>
         </select>
+      </label>
+      <label className="flex flex-col gap-1 text-sm">
+        접수 시작
+        <input
+          type="datetime-local"
+          value={applyStartAt}
+          onChange={(e) => setApplyStartAt(e.target.value)}
+          className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2"
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-sm">
+        접수 마감
+        <input
+          type="datetime-local"
+          value={applyEndAt}
+          onChange={(e) => handleApplyEndAtInputChange(e.target.value)}
+          className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2"
+        />
+        {applyEndAt && (
+          applyEndAtEvidence ? (
+            <span className="text-xs text-[var(--color-brand-700)]">원문에서 확인됨: “{applyEndAtEvidence}”</span>
+          ) : (
+            <span className="text-xs text-[var(--color-muted-foreground)]">직접 입력됨 — 운영자가 원문을 다시 확인해요</span>
+          )
+        )}
       </label>
       <p className="text-xs text-[var(--color-muted-foreground)]">
         제보한 활동은 운영자 검토 후 공개돼요. 검토 결과는 알림으로 알려드려요.

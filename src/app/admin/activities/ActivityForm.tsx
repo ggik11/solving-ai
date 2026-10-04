@@ -2,7 +2,16 @@
 
 import { useState } from "react";
 import { createActivity, updateActivity, type ActivityFormInput } from "./actions";
+import { previewActivityImportUrlAction } from "./import-url-actions";
 import type { Activity } from "@/lib/supabase/types";
+import { UrlImportPanel, type UrlImportApplyAction } from "@/components/UrlImportPanel";
+
+function toDateTimeLocalFromIso(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 
 function toDateTimeLocal(iso: string | null): string {
   if (!iso) return "";
@@ -42,12 +51,48 @@ export function ActivityForm({
     activityStartAt: toDateTimeLocal(initial?.activity_start_at ?? null),
     activityEndAt: toDateTimeLocal(initial?.activity_end_at ?? null),
     status: initial?.status ?? "draft",
+    sourceUrlResolved: initial?.source_url_resolved ?? "",
+    applyEndAtEvidence: initial?.apply_end_at_evidence ?? "",
   });
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   function set<K extends keyof ActivityFormInput>(key: K, value: ActivityFormInput[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  /** 접수 마감을 손으로 바꾸면 더 이상 "원문에서 확인된 값"이 아니므로 근거를 비운다. */
+  function handleApplyEndAtInputChange(value: string) {
+    setForm((prev) => ({ ...prev, applyEndAt: value, applyEndAtEvidence: "" }));
+  }
+
+  function handleImportApply(action: UrlImportApplyAction) {
+    switch (action.kind) {
+      case "title":
+        set("title", action.value);
+        break;
+      case "orgName":
+        set("orgName", action.value);
+        break;
+      case "description":
+        set("description", action.value);
+        break;
+      case "eligibility":
+        set("eligibility", action.value);
+        break;
+      case "sourceUrl":
+        setForm((prev) => ({ ...prev, sourceUrl: action.value, sourceUrlResolved: action.resolved }));
+        break;
+      case "date": {
+        const local = toDateTimeLocalFromIso(action.iso);
+        if (action.field === "applyEndAt") {
+          setForm((prev) => ({ ...prev, applyEndAt: local, applyEndAtEvidence: action.raw }));
+        } else {
+          set(action.field, local);
+        }
+        break;
+      }
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -63,6 +108,12 @@ export function ActivityForm({
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      <UrlImportPanel
+        previewAction={previewActivityImportUrlAction}
+        onApply={handleImportApply}
+        enabledFields={["title", "orgName", "description", "eligibility", "sourceUrl", "date"]}
+        duplicateLinkBase="/admin/activities"
+      />
       <Field label="제목 *">
         <input value={form.title} onChange={(e) => set("title", e.target.value)} required className={inputClass} />
       </Field>
@@ -124,7 +175,19 @@ export function ActivityForm({
           <input type="datetime-local" value={form.applyStartAt} onChange={(e) => set("applyStartAt", e.target.value)} className={inputClass} />
         </Field>
         <Field label="접수 마감">
-          <input type="datetime-local" value={form.applyEndAt} onChange={(e) => set("applyEndAt", e.target.value)} className={inputClass} />
+          <input
+            type="datetime-local"
+            value={form.applyEndAt}
+            onChange={(e) => handleApplyEndAtInputChange(e.target.value)}
+            className={inputClass}
+          />
+          {form.applyEndAt && (
+            form.applyEndAtEvidence ? (
+              <span className="text-xs text-[var(--color-brand-700)]">원문에서 확인됨: “{form.applyEndAtEvidence}”</span>
+            ) : (
+              <span className="text-xs text-[var(--color-muted-foreground)]">직접 입력됨 — 원문 확인 필요</span>
+            )
+          )}
         </Field>
         <Field label="활동 시작">
           <input type="datetime-local" value={form.activityStartAt} onChange={(e) => set("activityStartAt", e.target.value)} className={inputClass} />

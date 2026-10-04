@@ -46,7 +46,8 @@ const ALLOWLIST: Record<string, readonly ("anon" | "authenticated")[]> = {
   "reopen_party(uuid)": ["authenticated"],
   "respond_to_match_proposal(uuid, boolean)": ["authenticated"],
   "send_chat_message(uuid, text, text)": ["authenticated"],
-  "submit_activity(text, text, text, text, text, text, text, text)": ["authenticated"],
+  "submit_activity(text, text, text, text, text, text, text, text, timestamp with time zone, timestamp with time zone, timestamp with time zone, timestamp with time zone, text, text)":
+    ["authenticated"],
   "suspend_account(uuid, text)": ["authenticated"],
   "unsuspend_account(uuid)": ["authenticated"],
   "update_party_details(uuid, text, text, text, timestamp with time zone, jsonb, jsonb)": ["authenticated"],

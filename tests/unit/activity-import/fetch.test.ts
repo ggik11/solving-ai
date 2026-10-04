@@ -221,6 +221,35 @@ describe("fetchSinglePage", () => {
     expect(result.html).toContain("ok");
   });
 
+  it("ACTIVITY_IMPORT_SSRF_TEST_ALLOWLIST에 등록된 호스트만 예외적으로 차단을 건너뛴다(E2E 전용)", async () => {
+    const fetchImpl = createFakeFetch({
+      "http://127.0.0.1:9999/fixture": htmlResponse("<html>fixture</html>"),
+    });
+    const original = process.env.ACTIVITY_IMPORT_SSRF_TEST_ALLOWLIST;
+    try {
+      process.env.ACTIVITY_IMPORT_SSRF_TEST_ALLOWLIST = "127.0.0.1";
+      const result = await fetchSinglePage("http://127.0.0.1:9999/fixture", { checkRobots: false }, { fetchImpl });
+      expect(result.html).toContain("fixture");
+    } finally {
+      if (original === undefined) delete process.env.ACTIVITY_IMPORT_SSRF_TEST_ALLOWLIST;
+      else process.env.ACTIVITY_IMPORT_SSRF_TEST_ALLOWLIST = original;
+    }
+  });
+
+  it("허용 목록이 설정돼 있어도 목록에 없는 사설 IP는 그대로 차단한다", async () => {
+    const fetchImpl = createFakeFetch({});
+    const original = process.env.ACTIVITY_IMPORT_SSRF_TEST_ALLOWLIST;
+    try {
+      process.env.ACTIVITY_IMPORT_SSRF_TEST_ALLOWLIST = "127.0.0.1";
+      await expect(
+        fetchSinglePage("http://10.0.0.9/x", { checkRobots: false }, { fetchImpl })
+      ).rejects.toMatchObject({ reason: "BLOCKED_HOST" });
+    } finally {
+      if (original === undefined) delete process.env.ACTIVITY_IMPORT_SSRF_TEST_ALLOWLIST;
+      else process.env.ACTIVITY_IMPORT_SSRF_TEST_ALLOWLIST = original;
+    }
+  });
+
   it("robots.txt가 없으면(404) 허용으로 간주한다", async () => {
     const fetchImpl = createFakeFetch({
       "https://norobots.example.com/notice/1": htmlResponse("<html>ok</html>"),

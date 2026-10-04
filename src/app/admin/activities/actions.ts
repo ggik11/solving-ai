@@ -24,6 +24,9 @@ export interface ActivityFormInput {
   activityStartAt: string;
   activityEndAt: string;
   status: ActivityStatus;
+  /** URL 가져오기로 채운 경우의 출처 메타데이터(선택). 수동 입력일 때는 비워둔다. */
+  sourceUrlResolved?: string;
+  applyEndAtEvidence?: string;
 }
 
 function toTimestamp(value: string): string | null {
@@ -53,6 +56,8 @@ function toRow(input: ActivityFormInput) {
     activity_end_at: toTimestamp(input.activityEndAt),
     status: input.status,
     last_verified_at: new Date().toISOString(),
+    source_url_resolved: input.sourceUrlResolved?.trim() || null,
+    apply_end_at_evidence: input.applyEndAtEvidence?.trim() || null,
   };
 }
 
