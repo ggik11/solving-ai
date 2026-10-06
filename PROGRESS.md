@@ -646,3 +646,62 @@ CRON_SECRET=여기에_임의의_긴_문자열을_넣으세요
 - `docs/operations.md` 6절의 개인정보 처리방침 법무 검토.
 - 실제 배포(README "배포 방법" 절 참조 — 이번 세션에서는 실행하지 않음).
 - (선택) 위 14~16번처럼 시간 제약으로 못 채운 작은 테스트 격차.
+
+## 코드 검수 (품질·효율 — 보안 재탐색 제외, 진행 중)
+
+5-B에서 보안 리뷰는 이미 끝났으므로, 이번 검수는 **죽은 코드·런타임 에러 유발 요소·비효율**에만 집중한다(RLS/SECURITY DEFINER/EXECUTE 권한/SSRF 방어/날짜 검증 로직은 건드리지 않음 — 사용자 지시). 백그라운드 서브에이전트 방식이 응답 없이 멈춰(알 수 없는 플랫폼 지연) 중단했고, 세션에서 직접 범위를 나눠 순서대로 검수하며 끝날 때마다 이 절에 바로 기록한다.
+
+### 범위 1/5: src/lib (완료)
+
+`auth.ts`/`blocks.ts`/`chat.ts`/`errors.ts`/`format.ts`/`nav-badges.ts`/`party.ts`/`reports.ts`/`url.ts`/`matching.ts`/`recommend.ts`/`recommendations/query.ts`/`supabase/*`/`csv/*`/`activity-import/*` 전체(29개 파일)를 직접 읽었다. 전반적으로 품질이 높고(순수 함수 분리, 주입 가능한 의존성, 결정적 처리), 런타임 에러를 유발할 만한 요소나 N+1 패턴은 발견하지 못했다. 각 export(`parseDbError`, `APPLY_PHASE_LABEL`, `isSafeRelativePath`, `describeFetchError` 등 의심 가는 것들)는 실제 사용처를 grep으로 확인했고 전부 쓰이고 있었다.
+
+- **발견 (쓸모없음/Low):** `package.json`의 `dependencies.zod`(`^4.6.5`)가 `src/` 전체 어디에서도 import되지 않는다(`grep -rn 'from "zod"' src/` 0건, PROGRESS.md 5-B 보안 리뷰에서도 "서버 액션 입력 검증에 zod가 전혀 쓰이지 않음"으로 이미 지적됐었지만 제거되지 않고 남아 있었음). → 범위 5(package.json)에서 같이 처리.
+
+### 범위 2/5: src/app 서버 액션·API 라우트 (완료)
+
+`use server` 파일 17개 + `route.ts` 2개(총 19개) 전부 읽었다. `friendlyError`/`parseDbError` 에러 변환 패턴이 전체에 일관되게 적용돼 있다. `admin/activities/actions.ts`의 `createActivity`/`updateActivity`/`bulkImportActivities`/`createMatchTemplateAction` 등은 앱 레벨에서 `isCurrentUserAdmin()`을 호출하지 않지만, `supabase/migrations/20261003120700_rls_policies.sql:118-124`의 `activities_write_insert/update`가 `with check (public.is_admin())`로 이미 운영자만 허용하므로 의도된 설계(RLS가 실제 경계)다 — 버그 아님.
+
+- **발견 (에러 유발/Low):** `src/app/activities/bookmark-actions.ts`의 `toggleBookmark`가 "조회 후 분기"(존재 확인 → insert/delete) 방식이라, 같은 활동을 거의 동시에 두 번 토글하면(연타, 네트워크 재시도 등) 두 번째 insert가 `23505`(unique violation)로 실패해 사용자에게 raw DB 에러 문구(`북마크에 실패했습니다: ...`)가 그대로 노출될 수 있다. 같은 파일 묶음의 `src/app/me/blocked/actions.ts`의 `blockUserAction`은 이미 `error.code !== "23505"`일 때만 실패로 처리하는 같은 패턴의 보호 로직이 있어 비교가 된다. **고치지 않음** — 에러 경로의 사용자 노출 메시지가 "실패"에서 "성공"으로 바뀌는 것이라 "사용자에게 보이는 동작을 바꾸지 말라"는 원칙에 걸릴 수 있어 목록에 "확인 필요"로만 남긴다(아래 표).
+- **발견 (에러 유발/Low):** `src/app/admin/activities/actions.ts`의 `deleteMatchTemplateAction`이 DB 에러의 실제 원인과 무관하게 항상 "이미 참가 신청이 있는 템플릿은 삭제할 수 없어요. 대신 비활성화해 주세요."로 고정 메시지를 보여준다 — 실제로는 FK 제약 위반이 아닌 다른 이유(권한, 네트워크 등)로도 같은 문구가 뜰 수 있어 오진단을 유발할 수 있다. **고치지 않음** — 메시지 문구 변경은 사용자에게 보이는 동작 변경이라 "확인 필요"로 남긴다.
+
+### 범위 3/5: src/components·페이지 컴포넌트 (완료)
+
+`src/components/*`(12개) + `src/app` 하위 `page.tsx`(28개) + 그 외 클라이언트 컴포넌트/헬퍼(23개, `queries.ts` 포함) — 총 63개 파일을 전부 읽었다. 전반적으로 로딩/에러/빈 상태/권한없음 네 가지 상태를 일관되게 다루고, 낙관적 업데이트·재시도·행 레벨 액션 패턴이 반복 가능한 수준으로 통일돼 있다.
+
+- **발견 (비효율·N+1/Medium):** `src/app/me/withdraw/page.tsx:26-38`가 "내가 팀장인 파티" 각각에 대해 `for` 루프 안에서 다른 활성 멤버 수를 `count`로 **개별 쿼리**한다(파티가 N개면 쿼리 1 + N번). 한 사용자가 팀장인 파티 수는 보통 작아 체감 영향은 적지만, 구조적으로 명확한 N+1 패턴이라 수정 대상으로 분류한다 — 파티 ID 목록으로 `party_members`를 한 번에 조회해 그룹화하는 방식으로 바꿀 수 있다(사용자에게 보이는 결과는 동일).
+- **발견 (쓸모없음/Low):** `src/app/admin/activities/ActivityForm.tsx:9-22`에 `toDateTimeLocalFromIso`와 `toDateTimeLocal`이라는 **완전히 동일한 본문**의 함수 두 개가 나란히 정의돼 있다(복사 붙여넣기로 보임). 하나로 합쳐도 동작은 바뀌지 않는다.
+- **발견 (에러 유발/Low, 확인 필요):** `src/app/parties/[id]/edit/EditPartyForm.tsx:14-19`의 `toDatetimeLocal`은 같은 역할을 하는 다른 두 파일(`ActivityForm.tsx`/`SubmitActivityForm.tsx`)의 버전과 달리 `Number.isNaN(date.getTime())` 가드가 없다 — `recruit_deadline`이 혹시라도 해석 불가능한 문자열이면 입력창에 "NaN-NaN-NaNTNaN:NaN"이 그대로 들어간다. 실제로는 DB 컬럼이 항상 유효한 timestamptz거나 null이라 발생 가능성은 매우 낮다. 가드를 추가하는 것 자체는 안전하지만 "확인 필요" 목록에만 남긴다(엣지 케이스 동작이 바뀜).
+- **발견 (에러 유발 가능성/Low, 확인 필요):** `src/app/activities/queries.ts:60,66`이 검색어(`filters.q`)와 지역(`filters.region`)을 이스케이프 없이 PostgREST `.or()`/`.ilike()` 필터 문자열에 그대로 끼워 넣는다. 쉼표·괄호·`%`처럼 PostgREST 필터 문법에서 의미를 갖는 문자를 검색어에 입력하면 필터 문법이 깨져 쿼리가 실패할 수 있다 — 다행히 `src/app/activities/page.tsx:40`이 `result.error`를 이미 `ErrorRetry`로 처리해 크래시 없이 "활동을 불러오지 못했습니다"로 끝난다. 사용자가 보는 결과가 "검색 실패"에서 "정상 검색"으로 바뀌는 수정이라 목록에만 남긴다.
+### 범위 4/5: supabase/migrations DB 함수·인덱스 (완료, 읽기 전용 — 기존 파일 수정 없음)
+
+30개 마이그레이션 파일(5536줄)을 전부 읽거나(작은 파일) 또는 함수/인덱스 정의를 중심으로 훑었다(큰 파일). 기존 인덱스 전체 목록(`create index`/`create unique index` 27건)과 모든 FK 컬럼(`references public....`)을 대조해 색인 공백을 확인했고, `_find_match_for_group`/`run_match_worker`/`approve_application` 등 핵심 함수의 루프는 전부 "팀/제안 멤버 수"처럼 크기가 작게 bounded된 집합을 순회해 추가로 고칠 만한 N+1은 없었다(기존 설계가 `FOR UPDATE SKIP LOCKED`·임시 테이블·int4multirange 연산자를 이미 신중하게 쓰고 있다).
+
+- **발견 (비효율·인덱스 누락/Medium, 실제 수정 대상):** `match_proposal_members.queue_id`(마이그레이션 `20261004040000`에서 `ON DELETE CASCADE`로 바뀐 그 컬럼)에 인덱스가 없다. 이 컬럼은 (1) `_cancel_matching_queue_for_activity`(`20261003170100_matching_functions.sql:558`)와 `/match/[activityId]` 페이지(`src/app/match/[activityId]/page.tsx:145`)에서 직접 `where queue_id = ...`로 조회되고, (2) `ON DELETE CASCADE` FK의 대상이라 `matching_queue` 행이 지워질 때마다(활동 삭제 등) Postgres가 이 테이블을 스캔해 자식 행을 찾는다. 둘 다 추측이 아니라 실제 조회·삭제 경로다. → 새 마이그레이션으로 `match_proposal_members(queue_id)` 인덱스 추가.
+- **발견 (비효율·인덱스 누락/Medium, 실제 수정 대상):** `matching_queue`에 `(status, activity_id, template_id)`를 함께 인덱싱하는 색인이 없다. `run_match_worker()`가 **pg_cron으로 매분 자동 실행**되며 그 안에서 (a) `select distinct activity_id, template_id from matching_queue where status='waiting'`, (b) `_find_match_for_group`의 `where activity_id=... and template_id=... and status='waiting' ... for update skip locked` 두 쿼리를 매번 돌린다 — 1회성 페이지 조회가 아니라 상시 반복 실행되는 워크로드라 "측정 근거 있음"으로 판단했다. `/match/[activityId]` 대기 화면(`WaitingPanel`)의 `eq("activity_id",...).eq("template_id",...).eq("status","waiting")` 조회도 같은 인덱스로 이득을 본다. → 새 마이그레이션으로 `matching_queue(status, activity_id, template_id)` 인덱스 추가.
+- **발견 (인덱스 공백/Low, 확인 필요만 — 고치지 않음):** `blocks` 테이블은 PK가 `(blocker_id, blocked_id)`뿐이라 `blocked_id` 단독 조건(여러 화면이 쓰는 `.or('blocker_id.eq.X,blocked_id.eq.X')`)은 인덱스를 못 탄다. 구조적으로는 맞지만 이 앱 규모(학교 과제 데모)에서 실제 느려짐을 관측하거나 측정한 적은 없어 "추측성 최적화 금지" 원칙에 따라 고치지 않고 기록만 남긴다.
+
+### 범위 5/5: scripts·package.json 의존성 (완료)
+
+`scripts/run-match-worker.mjs`·`scripts/run-link-check-worker.mjs`는 둘 다 짧고 문제 없음(개발용 1회 실행 스크립트, 운영 경로인 pg_cron/외부 cron과 역할이 분리됨을 주석으로 명시). `package.json`의 모든 의존성에 대해 실제 import 여부를 grep으로 전수 확인했다.
+
+- **발견 (쓸모없음/Low, 실제 수정 대상):** `dependencies.zod`(범위 1에서 이미 발견)와 `devDependencies`의 `@testing-library/react`·`@testing-library/jest-dom`이 `src/`·`tests/`·설정 파일 어디에도 전혀 참조되지 않는다. 테스트 스위트에 `.test.tsx`(컴포넌트 렌더링 테스트) 파일이 한 개도 없고(`tests/unit`·`tests/rls` 전부 `.test.ts`), `tests/setup.ts`도 `@testing-library/jest-dom`의 커스텀 matcher를 import하지 않는다. → 제거 대상.
+- **확인했지만 살려둔 것:** `@vitejs/plugin-react`(vitest.config.ts의 `plugins: [react()]`)와 `jsdom`(같은 파일의 `environment: "jsdom"`)은 설정에서 실제로 참조되고 있어 "미사용"으로 분류하지 않았다 — 지금 당장은 `.tsx` 테스트가 없어 엄밀히는 불필요할 수 있지만, 향후 컴포넌트 테스트를 추가할 가능성에 대비한 테스트 하네스 설정이라 제거하면 범위를 벗어난 추측성 변경이 된다. `pg`는 `tests/rls/execute_privileges.test.ts`·`tests/global-setup.ts`에서 실제로 쓰인다(살아있음).
+
+---
+
+## 종합 — 심각도순 수정 대상 표
+
+| # | 심각도 | 분류 | 파일 | 문제 | 영향 | 수정 방안 | 상태 |
+|---|---|---|---|---|---|---|---|
+| 1 | Medium | 비효율(상시 반복 워크로드) | `supabase/migrations`(신규) | `matching_queue`에 `(status, activity_id, template_id)` 복합 인덱스 없음 — `run_match_worker()`가 pg_cron으로 **매분** 이 조합으로 스캔 | 활동·템플릿 수가 늘수록 매분 풀스캔 비용 증가 | 신규 마이그레이션으로 인덱스 추가(순수 추가, 동작 불변) | 수정 예정 |
+| 2 | Medium | 비효율(인덱스 누락) | `supabase/migrations`(신규) | `match_proposal_members.queue_id`(ON DELETE CASCADE FK) 인덱스 없음 — 직접 조회 2곳 + CASCADE 삭제마다 스캔 | 조회·활동 삭제 시 불필요한 전체 스캔 | 신규 마이그레이션으로 인덱스 추가(순수 추가, 동작 불변) | 수정 예정 |
+| 3 | Medium | 비효율(N+1) | `src/app/me/withdraw/page.tsx:26-38` | 팀장인 파티 수(N)만큼 `count` 쿼리를 반복 실행 | 쿼리 1+N번(팀장 파티가 많을수록 느려짐) | 파티 ID 목록으로 한 번에 조회해 그룹화(결과 동일) | 수정 예정 |
+| 4 | Low | 쓸모없음(죽은 의존성) | `package.json` | `zod`가 `src/` 어디에도 import되지 않음 | 불필요한 설치 용량 | `dependencies`에서 제거 + lockfile 갱신 | 수정 예정 |
+| 5 | Low | 쓸모없음(죽은 의존성) | `package.json` | `@testing-library/react`·`@testing-library/jest-dom`이 쓰이지 않음(`.test.tsx` 없음) | 불필요한 설치 용량 | `devDependencies`에서 제거 + lockfile 갱신 | 수정 예정 |
+| 6 | Low | 쓸모없음(중복 코드) | `src/app/admin/activities/ActivityForm.tsx:9-22` | `toDateTimeLocalFromIso`/`toDateTimeLocal` 완전 동일 함수 2개 | 유지보수 혼란 | 하나로 병합 | 수정 예정 |
+| 7 | Low | 에러 유발(에러 메시지 정확도) | `src/app/admin/activities/actions.ts`(`deleteMatchTemplateAction`) | 모든 삭제 실패를 "이미 신청 있음" 고정 문구로 표시 | 다른 원인(권한·네트워크)도 같은 문구로 오진단 | 에러 코드별 분기 필요 | **확인 필요**(사용자 노출 문구 변경이라 보류) |
+| 8 | Low | 에러 유발(동시성) | `src/app/activities/bookmark-actions.ts`(`toggleBookmark`) | 조회 후 분기 방식 — 연타 시 두 번째 요청이 `23505`로 raw 에러 노출 | 드문 경쟁 상황에서 사용자에게 기술적 에러 문구 노출 | `blockUserAction`처럼 `23505`를 성공으로 처리 | **확인 필요**(에러→성공으로 바뀌는 동작 변경) |
+| 9 | Low | 에러 유발(필터 문법) | `src/app/activities/queries.ts:60,66` | 검색어/지역에 쉼표·괄호 등이 있으면 PostgREST 필터 문법이 깨짐 | 이미 `ErrorRetry`로 안전하게 처리되어 크래시는 없음, 다만 검색이 조용히 실패 | 값 이스케이프 또는 파라미터화 필요 | **확인 필요**(검색 결과가 "실패"→"성공"으로 바뀌는 동작 변경) |
+| 10 | Low | 에러 유발(가드 불일치) | `src/app/parties/[id]/edit/EditPartyForm.tsx:14-19` | `toDatetimeLocal`에 날짜 파싱 실패 가드 없음(다른 2개 버전엔 있음) | `recruit_deadline`이 비정상 값일 때 입력창에 "NaN" 표시 가능(실제 발생 가능성 매우 낮음) | `Number.isNaN` 가드 추가 | **확인 필요**(엣지 케이스 동작 변경) |
+
+#1~#6은 "사용자에게 보이는 동작 불변" 원칙을 지키는 순수 정리·추가라 바로 진행한다. #7~#10은 사용자 노출 문구·동작이 달라지므로 고치지 않고 위 표에 "확인 필요"로만 남긴다.

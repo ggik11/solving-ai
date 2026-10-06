@@ -14,11 +14,7 @@ function toDateTimeLocalFromIso(iso: string): string {
 }
 
 function toDateTimeLocal(iso: string | null): string {
-  if (!iso) return "";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return iso ? toDateTimeLocalFromIso(iso) : "";
 }
 
 export function ActivityForm({
