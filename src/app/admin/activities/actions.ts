@@ -69,7 +69,7 @@ export async function createActivity(input: ActivityFormInput): Promise<{ ok: bo
   if (!input.title.trim()) return { ok: false, error: "제목을 입력해 주세요." };
 
   const { error } = await supabase.from("activities").insert({ ...toRow(input), created_by: userData.user.id });
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: "활동 등록에 실패했습니다. 입력값을 확인하고 다시 시도해 주세요." };
 
   revalidatePath("/admin/activities");
   revalidatePath("/activities");
@@ -81,7 +81,7 @@ export async function updateActivity(id: string, input: ActivityFormInput): Prom
   if (!input.title.trim()) return { ok: false, error: "제목을 입력해 주세요." };
 
   const { error } = await supabase.from("activities").update(toRow(input)).eq("id", id);
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: "활동 수정에 실패했습니다. 입력값을 확인하고 다시 시도해 주세요." };
 
   revalidatePath("/admin/activities");
   revalidatePath("/activities");
@@ -92,7 +92,7 @@ export async function updateActivity(id: string, input: ActivityFormInput): Prom
 export async function setActivityStatus(id: string, status: ActivityStatus): Promise<{ ok: boolean; error?: string }> {
   const supabase = await createClient();
   const { error } = await supabase.from("activities").update({ status }).eq("id", id);
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: "상태 변경에 실패했습니다. 잠시 후 다시 시도해 주세요." };
 
   revalidatePath("/admin/activities");
   revalidatePath("/activities");
@@ -159,7 +159,7 @@ export async function bulkImportActivities(
   }));
 
   const { error } = await supabase.from("activities").insert(payload);
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: "일괄 등록에 실패했습니다. 입력값을 확인하고 다시 시도해 주세요." };
 
   revalidatePath("/admin/activities");
   revalidatePath("/activities");
@@ -205,14 +205,14 @@ export async function createMatchTemplateAction(
     .insert({ activity_id: activityId, name: name.trim() })
     .select("id")
     .single();
-  if (error || !template) return { ok: false, error: error?.message ?? "템플릿 생성에 실패했습니다." };
+  if (error || !template) return { ok: false, error: "템플릿 생성에 실패했습니다. 잠시 후 다시 시도해 주세요." };
 
   const { error: rolesError } = await supabase
     .from("activity_match_template_roles")
     .insert(roles.map((r) => ({ template_id: template.id, role_name: r.roleName.trim(), capacity: r.capacity })));
   if (rolesError) {
     await supabase.from("activity_match_templates").delete().eq("id", template.id);
-    return { ok: false, error: rolesError.message };
+    return { ok: false, error: "템플릿 역할 저장에 실패했습니다. 잠시 후 다시 시도해 주세요." };
   }
 
   revalidatePath(`/admin/activities/${activityId}/edit`);
@@ -227,7 +227,7 @@ export async function setMatchTemplateActiveAction(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const supabase = await createClient();
   const { error } = await supabase.from("activity_match_templates").update({ is_active: isActive }).eq("id", templateId);
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: "템플릿 상태 변경에 실패했습니다. 잠시 후 다시 시도해 주세요." };
 
   revalidatePath(`/admin/activities/${activityId}/edit`);
   revalidatePath(`/activities/${activityId}`);
@@ -241,7 +241,12 @@ export async function deleteMatchTemplateAction(
   const supabase = await createClient();
   const { error } = await supabase.from("activity_match_templates").delete().eq("id", templateId);
   if (error) {
-    return { ok: false, error: "이미 참가 신청이 있는 템플릿은 삭제할 수 없어요. 대신 비활성화해 주세요." };
+    // 23503 = FK 위반(matching_queue/match_proposals가 이 템플릿을 참조 중) — 그 외의 실패
+    // 원인(권한, 네트워크 등)은 다른 문구로 구분해 사용자가 잘못 짐작하지 않게 한다.
+    if (error.code === "23503") {
+      return { ok: false, error: "이미 참가 신청이 있는 템플릿은 삭제할 수 없어요. 대신 비활성화해 주세요." };
+    }
+    return { ok: false, error: "템플릿 삭제에 실패했습니다. 잠시 후 다시 시도해 주세요." };
   }
 
   revalidatePath(`/admin/activities/${activityId}/edit`);

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { friendlyError } from "@/lib/errors";
+import { RECRUIT_DEADLINE_ISSUE_LABEL, validateRecruitDeadline } from "@/lib/party";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -26,6 +27,14 @@ export async function createPartyAction(input: CreatePartyInput): Promise<Action
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
   if (!userData.user) return { ok: false, error: "로그인이 필요합니다." };
+
+  // 서버 액션은 폼의 클라이언트 쪽 검증을 거치지 않고 직접 호출될 수 있으므로 여기서도 다시
+  // 검사한다 — 잘못된 날짜 문자열이 그대로 RPC(timestamptz 인자)에 전달되면 원문 그대로의
+  // Postgres 타입 캐스팅 오류가 노출된다.
+  const deadlineIssue = validateRecruitDeadline(input.recruitDeadline);
+  if (deadlineIssue) {
+    return { ok: false, error: `모집 마감: ${RECRUIT_DEADLINE_ISSUE_LABEL[deadlineIssue]}` };
+  }
 
   const { data: partyId, error } = await supabase.rpc("create_party", {
     p_activity_id: input.activityId,
@@ -156,6 +165,13 @@ export interface UpdatePartyDetailsInput {
 
 export async function updatePartyDetailsAction(input: UpdatePartyDetailsInput): Promise<ActionResult> {
   const supabase = await createClient();
+
+  // 폼의 클라이언트 검증과 같은 규칙을 서버에서도 다시 확인한다(서버 액션 직접 호출 대비).
+  const deadlineIssue = validateRecruitDeadline(input.recruitDeadline);
+  if (deadlineIssue) {
+    return { ok: false, error: `모집 마감: ${RECRUIT_DEADLINE_ISSUE_LABEL[deadlineIssue]}` };
+  }
+
   const { error } = await supabase.rpc("update_party_details", {
     p_party_id: input.partyId,
     p_title: input.title,

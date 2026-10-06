@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { isDuplicateKeyError } from "@/lib/errors";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -16,8 +17,8 @@ export async function blockUserAction(blockedId: string): Promise<ActionResult> 
   const { error } = await supabase
     .from("blocks")
     .insert({ blocker_id: userData.user.id, blocked_id: blockedId });
-  if (error && error.code !== "23505") {
-    return { ok: false, error: `차단에 실패했습니다: ${error.message}` };
+  if (error && !isDuplicateKeyError(error)) {
+    return { ok: false, error: "차단에 실패했습니다. 잠시 후 다시 시도해 주세요." };
   }
 
   revalidatePath("/me/blocked");
@@ -36,7 +37,7 @@ export async function unblockUserAction(blockedId: string): Promise<ActionResult
     .delete()
     .eq("blocker_id", userData.user.id)
     .eq("blocked_id", blockedId);
-  if (error) return { ok: false, error: `차단 해제에 실패했습니다: ${error.message}` };
+  if (error) return { ok: false, error: "차단 해제에 실패했습니다. 잠시 후 다시 시도해 주세요." };
 
   revalidatePath("/me/blocked");
   revalidatePath("/chat");

@@ -70,7 +70,7 @@ export async function saveProfile(input: ProfileFormInput): Promise<SaveProfileR
     if (profileError.code === "23505") {
       return { ok: false, error: "이미 사용 중인 닉네임입니다." };
     }
-    return { ok: false, error: `프로필 저장에 실패했습니다: ${profileError.message}` };
+    return { ok: false, error: "프로필 저장에 실패했습니다. 입력값을 확인하고 다시 시도해 주세요." };
   }
 
   // 다중 선택 항목들은 "전체 삭제 후 다시 삽입" 방식으로 멱등하게 반영한다 (온보딩 재방문/수정 모두 동일 경로).

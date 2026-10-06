@@ -16,3 +16,12 @@ export function parseDbError(error: { message: string } | null, fallback: string
 export function friendlyError(error: { message: string } | null, fallback: string): string {
   return parseDbError(error, fallback).message;
 }
+
+/**
+ * Postgres unique violation(23505)인지 확인한다. 연타·네트워크 재시도 등으로 같은 멱등 삽입이
+ * 거의 동시에 두 번 들어와도 "이미 있음"은 실패가 아니라 성공으로 취급해야 하는 호출자가 쓴다
+ * (예: 북마크·차단 토글).
+ */
+export function isDuplicateKeyError(error: { code?: string } | null | undefined): boolean {
+  return error?.code === "23505";
+}

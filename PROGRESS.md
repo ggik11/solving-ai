@@ -699,26 +699,42 @@ CRON_SECRET=여기에_임의의_긴_문자열을_넣으세요
 | 4 | Low | 쓸모없음(죽은 의존성) | `package.json` | `zod`가 `src/` 어디에도 import되지 않음 | 불필요한 설치 용량 | `dependencies`에서 제거 + lockfile 갱신 | ✅ 완료 |
 | 5 | Low | 쓸모없음(죽은 의존성) | `package.json` | `@testing-library/react`·`@testing-library/jest-dom`이 쓰이지 않음(`.test.tsx` 없음) | 불필요한 설치 용량 | `devDependencies`에서 제거 + lockfile 갱신 | ✅ 완료 |
 | 6 | Low | 쓸모없음(중복 코드) | `src/app/admin/activities/ActivityForm.tsx:9-22` | `toDateTimeLocalFromIso`/`toDateTimeLocal` 완전 동일 함수 2개 | 유지보수 혼란 | 하나로 병합 | ✅ 완료 |
-| 7 | Low | 에러 유발(에러 메시지 정확도) | `src/app/admin/activities/actions.ts`(`deleteMatchTemplateAction`) | 모든 삭제 실패를 "이미 신청 있음" 고정 문구로 표시 | 다른 원인(권한·네트워크)도 같은 문구로 오진단 | 에러 코드별 분기 필요 | **확인 필요**(사용자 노출 문구 변경이라 보류) |
-| 8 | Low | 에러 유발(동시성) | `src/app/activities/bookmark-actions.ts`(`toggleBookmark`) | 조회 후 분기 방식 — 연타 시 두 번째 요청이 `23505`로 raw 에러 노출 | 드문 경쟁 상황에서 사용자에게 기술적 에러 문구 노출 | `blockUserAction`처럼 `23505`를 성공으로 처리 | **확인 필요**(에러→성공으로 바뀌는 동작 변경) |
-| 9 | Low | 에러 유발(필터 문법) | `src/app/activities/queries.ts:60,66` | 검색어/지역에 쉼표·괄호 등이 있으면 PostgREST 필터 문법이 깨짐 | 이미 `ErrorRetry`로 안전하게 처리되어 크래시는 없음, 다만 검색이 조용히 실패 | 값 이스케이프 또는 파라미터화 필요 | **확인 필요**(검색 결과가 "실패"→"성공"으로 바뀌는 동작 변경) |
-| 10 | Low | 에러 유발(가드 불일치) | `src/app/parties/[id]/edit/EditPartyForm.tsx:14-19` | `toDatetimeLocal`에 날짜 파싱 실패 가드 없음(다른 2개 버전엔 있음) | `recruit_deadline`이 비정상 값일 때 입력창에 "NaN" 표시 가능(실제 발생 가능성 매우 낮음) | `Number.isNaN` 가드 추가 | **확인 필요**(엣지 케이스 동작 변경) |
+| 7 | Low | 에러 유발(에러 메시지 정확도) | `src/app/admin/activities/actions.ts`(`deleteMatchTemplateAction`) | 모든 삭제 실패를 "이미 신청 있음" 고정 문구로 표시 | 다른 원인(권한·네트워크)도 같은 문구로 오진단 | `23503`(FK 위반)만 그 문구, 그 외는 일반 문구로 분기 | ✅ 완료 |
+| 8 | Low | 에러 유발(동시성) | `src/app/activities/bookmark-actions.ts`(`toggleBookmark`) | 조회 후 분기 방식 — 연타 시 두 번째 요청이 `23505`로 raw 에러 노출 | 드문 경쟁 상황에서 사용자에게 기술적 에러 문구 노출 | `isDuplicateKeyError`로 `23505`를 성공 처리 + raw 에러 노출 7곳 전체 정리 | ✅ 완료 |
+| 9 | Low | 에러 유발(필터 문법) | `src/app/activities/queries.ts:60,66` | 검색어/지역에 쉼표·괄호 등이 있으면 PostgREST 필터 문법이 깨짐 | 이미 `ErrorRetry`로 안전하게 처리되어 크래시는 없음, 다만 검색이 조용히 실패 | `escapeOrFilterValue`로 값을 큰따옴표 리터럴로 감싸 조립 | ✅ 완료 |
+| 10 | Low | 에러 유발(가드 불일치) | `src/app/parties/[id]/edit/EditPartyForm.tsx:14-19` | `toDatetimeLocal`에 날짜 파싱 실패 가드 없음(다른 2개 버전엔 있음) | `recruit_deadline`이 비정상 값일 때 입력창에 "NaN" 표시 가능(실제 발생 가능성 매우 낮음) | `Number.isNaN` 가드 추가 + 클라이언트·서버 양쪽에 `validateRecruitDeadline` 적용 | ✅ 완료 |
 
-#1~#6은 "사용자에게 보이는 동작 불변" 원칙을 지키는 순수 정리·추가라 바로 진행했다. #7~#10은 사용자 노출 문구·동작이 달라지므로 고치지 않고 위 표에 "확인 필요"로 남겼다.
+#1~#6은 애초에 "사용자에게 보이는 동작 불변" 원칙 안에서 바로 진행했다. #7~#10은 처음엔 동작이 달라진다고 보류했으나, 사용자가 "오류 상황의 동작만 바뀌는 버그 수정이니 진행해도 된다"고 확정해 와서 추가 커밋으로 모두 수정했다 — 상세는 아래 "확인 필요 4건 — 전부 수정함" 참조.
 
 ### 적용 순서와 검증 결과
 
 1. **쓸모없는 코드 (#4·#5·#6, 커밋 `3a3b0f8`):** `zod`/`@testing-library/react`/`@testing-library/jest-dom` 제거(`npm install`로 lockfile 갱신, 20개 패키지 제거) + `ActivityForm.tsx`의 중복 함수 병합. 검증: `lint`/`typecheck`/`build` 통과, `npm test` 274/274 통과.
 2. **비효율 (#1·#2·#3):** `matching_queue(status, activity_id, template_id)`·`match_proposal_members(queue_id)` 인덱스를 새 마이그레이션(`20261004110000`, `20261004120000`)으로 추가(기존 마이그레이션 파일은 수정하지 않음) + `/me/withdraw` 페이지의 N+1 쿼리를 파티 ID 목록 기반 단일 쿼리로 교체(반환 결과는 동일). 검증: `supabase db reset`으로 새 마이그레이션이 깨끗이 적용됨을 확인 → `lint`/`typecheck`/`build` 통과 → `npm test` 274/274 통과 → `npm run test:e2e` 9/9 통과.
 
-### 고치지 않은 것(확인 필요 — 위 표 #7~#10)
+### "확인 필요" 4건 — 전부 수정함 (추가 커밋)
 
-네 가지 모두 "사용자에게 보이는 동작은 바꾸지 말라"는 지시 때문에 보류했다. 실제로 고치려면 각각:
-- **#7 (`deleteMatchTemplateAction`):** DB 에러 코드(FK 위반 `23503` 등)를 확인해 분기하고, 그 외 에러는 원래 메시지를 보여주도록 바꿔야 한다.
-- **#8 (`toggleBookmark`):** insert 실패 시 `error.code === "23505"`면 "이미 북마크됨"으로 간주해 성공 처리(이미 같은 패턴을 쓰는 `blockUserAction` 참고).
-- **#9 (`activities/queries.ts`):** `filters.q`/`filters.region`에서 PostgREST 필터 문법상 의미 있는 문자(`,`, `(`, `)`, `%`, `*`)를 이스케이프하거나, `.textSearch`/파라미터 바인딩 방식으로 바꿔야 한다.
-- **#10 (`EditPartyForm.tsx`의 `toDatetimeLocal`):** 다른 두 버전처럼 `Number.isNaN(date.getTime())` 가드를 추가해야 한다.
+사용자가 "오류 상황의 동작만 바뀌는 버그 수정이니 진행해도 된다"고 확정해 와서, 위 표 #7~#10을 전부 수정했다. 정상 동작(성공 경로)은 그대로고, 지금까지 "실패하거나 혼란스러운 메시지를 보던" 오류 상황만 더 명확해진다.
+
+- **#9 (검색어 필터 주입):** `src/app/activities/queries.ts`에 `escapeOrFilterValue`/`buildActivitySearchOrFilter`를 추가했다. PostgREST `or()` 필터는 원문 문자열을 그대로 서버로 보내고 서버가 쉼표로 조건을 나누므로, 검색어를 꺼내 쓰기 전에 값 전체를 큰따옴표로 감싸고 그 안의 백슬래시·큰따옴표만 이스케이프한다(PostgREST의 "예약 문자를 큰따옴표로 감싸면 리터럴로 취급" 규칙). `"a,is_public.eq.false"`처럼 쉼표로 조건을 추가하려 해도, `"%"`·`"()"`처럼 ILIKE/그룹 문법에 쓰이는 문자를 넣어도 항상 title/org_name에 대한 ILIKE 조건 2개로만 조립된다. 단위 테스트(`tests/unit/activities-search-filter.test.ts`, 실제 PostgREST의 쉼표 분해 규칙을 흉내 낸 분해기로 "조건이 정확히 2개"임을 확인)와 실제 서버 대상 통합 테스트(`tests/rls/activities_search_filter.test.ts`, 같은 입력들로 `queryActivities`를 직접 호출해 에러 없이 끝남을 확인) 둘 다 추가했다.
+- **#8 (북마크 연타) + 다른 raw DB 에러 노출 전수 정리:** `src/lib/errors.ts`에 `isDuplicateKeyError(error)`(23505 판정, 단위 테스트 포함)를 추가해 `toggleBookmark`가 연타로 두 번째 insert가 23505여도 성공으로 처리하게 했다(이미 같은 패턴이던 `blockUserAction`과 통일). 이 김에 **대소문자를 구분하던 이전 grep(`error.message`)이 놓쳤던 `profileError.message`(`onboarding/actions.ts`)를 포함해** DB 에러 원문을 그대로 보여주던 7곳(`bookmark-actions.ts`, `me/blocked/actions.ts`, `recommendation-actions.ts`, `admin/activities/actions.ts`의 5개 함수, `onboarding/actions.ts`)을 전부 일반 사용자 문구로 바꿨다. DB 동작 자체(23505/23503이 실제로 그 코드를 내는지)는 `tests/rls/bookmarks_and_templates.test.ts`로 확인한다. `login/LoginForm.tsx`(Supabase Auth 서비스 메시지)와 `api/cron/link-check/route.ts`(사용자 화면이 아닌 운영 모니터링 엔드포인트)는 범주가 달라 그대로 뒀다.
+- **#10 + #3 (파티 수정 폼 날짜):** `src/lib/party.ts`에 `validateRecruitDeadline`(빈 값 허용, NaN·과거 1일 초과·미래 548일 초과를 가려내는 순수 함수, 단위 테스트 `tests/unit/party.test.ts`)을 추가했다. `EditPartyForm.tsx`의 `toDatetimeLocal`에 누락됐던 `Number.isNaN` 가드를 추가하고(#10), 제출 시 `validateRecruitDeadline`으로 먼저 검사해 "모집 마감: ..." 형식으로 어느 칸이 문제인지 알려준 뒤에만 제출한다(#3, 클라이언트). **서버 액션**(`parties/actions.ts`의 `updatePartyDetailsAction`)에도 같은 검사를 추가해, 액션이 폼을 거치지 않고 직접 호출돼도 잘못된 문자열이 RPC(timestamptz 인자)로 그대로 넘어가 알아보기 힘든 Postgres 타입 오류를 띄우는 일이 없게 했다. 같은 버그 계열(NaN 가드 없는 초기값)이 없는 `NewPartyForm.tsx`(파티 생성)에도 동일한 클라이언트 검사와 `createPartyAction` 서버 검사를 일관되게 추가했다.
+- **#7 (템플릿 삭제 실패 메시지):** `admin/activities/actions.ts`의 `deleteMatchTemplateAction`이 `error.code === "23503"`(FK 위반 — 대기열/제안이 참조 중)일 때만 "이미 참가 신청이 있는 템플릿은..." 문구를 보여주고, 그 외 원인(권한·네트워크 등)은 "템플릿 삭제에 실패했습니다. 잠시 후 다시 시도해 주세요."로 구분했다. `tests/rls/bookmarks_and_templates.test.ts`가 두 경로(참조 있음 → 23503, 참조 없음 → 정상 삭제) 모두 확인한다.
+
+### Zod 제거 이후 서버 액션 입력 검증 점검 (요청 5번)
+
+`zod` 제거 전후로 변하는 것이 없는지 `src/app/**/actions.ts` 19개 전부를 다시 훑었다. 결론: **Zod를 다시 추가하지 않는다.** 이 코드베이스는 원래부터 "입력 검증은 1차적으로 DB(SECURITY DEFINER 함수의 명시적 체크 또는 테이블 CHECK/FK 제약)가 책임지고, 서버 액션은 그 에러를 사용자에게 보여줄 말로만 바꾼다"는 설계였다(PROGRESS.md 5-B 보안 리뷰에서 이미 같은 결론: "zod 미사용은 Low — 실제 악용 사례 못 찾음"). 이번 점검으로 그 경계가 실제로 지켜지는지 확인했고, 유일한 구멍은 "DB가 거부했을 때 원문 에러를 그대로 보여주는가"였다 — 이번에 전부 고쳤다(위 #8 참조). 남은 건 전부 사소하고 범위를 벗어난다:
+
+| 파일 | 항목 | 현재 상태 | 비고 |
+|---|---|---|---|
+| `admin/activities/actions.ts`(`toRow`) | `team_min_size`/`team_max_size` | 숫자가 아닌 문자열이면 `Number()`가 `NaN`을 만들고, `JSON.stringify`가 `NaN`을 `null`로 바꿔 **조용히 무시**된다(에러도, 크래시도 없음) | `<input type="number">`라 브라우저가 숫자 아닌 입력을 막아 실제 도달 가능성은 낮다. 지금 막으면 "조용히 null 처리"에서 "제출 거부"로 동작이 바뀌므로 이번 범위(오류 경로만 수정)를 벗어나 고치지 않음 |
+| `onboarding/actions.ts`(`saveProfile`) | `grade`/`day_of_week`/`weeklyAvailableHours` 등 | 범위는 DB CHECK 제약(`grade between 1 and 10`, `day_of_week between 0 and 6`)이 막고, 실패 메시지는 이번에 일반 문구로 바꿨다(#8) | UI가 애초에 1~4학년·요일 선택 버튼만 제공해 실제로는 도달 불가 |
+| `activities/bookmark-actions.ts`/`me/blocked/actions.ts` | `activityId`/`blockedId` 형식(UUID) | 형식이 틀리면 Postgres가 `22P02`(잘못된 입력 형식)로 거부 → 이제 일반 문구로 안내됨 | 링크 자체가 서버에서 만든 UUID라 사용자가 직접 바꿔 보낼 때만 발생 |
+| 그 외 모든 RPC 기반 액션 | 전반 | SECURITY DEFINER 함수가 자체적으로 검증(예: `create_report`의 사유 CHECK·빈도 제한, `submit_activity`의 URL 스킴 검사)하고 `friendlyError`로 안내 | 5-A/5-B에서 이미 구축된 패턴, 이번에 다시 확인만 함 |
+
+### 검증 결과 (전체)
+
+`lint`/`typecheck`/`build` 통과 → `supabase db reset` → `npm test` **299/299 통과**(기존 274 + 신규 25: 필터 주입 방어 단위/통합, 날짜 검증 단위, 중복키 판정 단위, 북마크·템플릿 DB 동작 통합) → `npm run test:e2e` **9/9 통과**.
 
 ### 다음에 할 일
 
-이번 검수에서 발견한 항목은 모두 처리(수정 또는 "확인 필요" 기록)했다. 남은 것은 위 "확인 필요" 4건에 대한 사용자 판단뿐이다 — 기능 동작이 달라지는 수정이라 이 세션에서 임의로 반영하지 않았다.
+이번 요청으로 "확인 필요" 4건을 모두 수정했고, Zod 재도입은 불필요하다고 판단해 도입하지 않았다. 남은 건 위 표의 세 가지 사소한 항목(모두 UI 제약·DB CHECK로 실질적 도달 불가능)뿐이며, 그 외 추가로 발견된 작업은 없다.

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createPartyAction } from "../actions";
+import { RECRUIT_DEADLINE_ISSUE_LABEL, validateRecruitDeadline } from "@/lib/party";
 
 interface RoleRow {
   roleName: string;
@@ -53,6 +54,11 @@ export function NewPartyForm({ activityId }: { activityId: string }) {
     }
     if (!leaderRoleName) {
       setError("팀장이 맡을 역할을 선택해 주세요.");
+      return;
+    }
+    const deadlineIssue = validateRecruitDeadline(recruitDeadline);
+    if (deadlineIssue) {
+      setError(`모집 마감: ${RECRUIT_DEADLINE_ISSUE_LABEL[deadlineIssue]}`);
       return;
     }
 

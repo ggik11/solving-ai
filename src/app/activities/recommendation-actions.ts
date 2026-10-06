@@ -20,7 +20,7 @@ export async function dismissRecommendation(
     .upsert({ profile_id: userData.user.id, activity_id: activityId, feedback }, { onConflict: "profile_id,activity_id" });
 
   if (error) {
-    return { ok: false, error: `처리에 실패했습니다: ${error.message}` };
+    return { ok: false, error: "처리에 실패했습니다. 잠시 후 다시 시도해 주세요." };
   }
 
   revalidatePath("/");

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { updatePartyDetailsAction } from "../../actions";
+import { RECRUIT_DEADLINE_ISSUE_LABEL, validateRecruitDeadline } from "@/lib/party";
 
 interface RoleSlotRow {
   id: string;
@@ -14,6 +15,7 @@ interface RoleSlotRow {
 function toDatetimeLocal(iso: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
@@ -54,6 +56,12 @@ export function EditPartyForm({
     const roleSlotCapacities = roleSlots.map((s) => ({ roleSlotId: s.id, capacity: Number(capacities[s.id]) }));
     if (roleSlotCapacities.some((r) => !Number.isInteger(r.capacity) || r.capacity < 1)) {
       setError("역할별 인원은 1명 이상의 숫자로 입력해 주세요.");
+      return;
+    }
+
+    const deadlineIssue = validateRecruitDeadline(recruitDeadline);
+    if (deadlineIssue) {
+      setError(`모집 마감: ${RECRUIT_DEADLINE_ISSUE_LABEL[deadlineIssue]}`);
       return;
     }
 

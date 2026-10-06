@@ -47,6 +47,23 @@ export function filtersToSearchParams(filters: ActivityFilters, overrides: Parti
   return params.toString();
 }
 
+/**
+ * PostgREST or() 필터는 괄호로 감싼 원문 문자열을 그대로 서버에 보내고, 서버가 쉼표로 조건을
+ * 나눈다 — 검색어를 템플릿 문자열로 그냥 끼워 넣으면 쉼표·점·괄호를 포함한 검색어가 조건을
+ * 추가하거나 필터 구조를 깨뜨릴 수 있다(예: "a,is_public.eq.false"). PostgREST는 값을 큰따옴표로
+ * 감싸면 그 안의 예약 문자(쉼표·괄호 등)를 리터럴로 취급하므로, 값 전체를 항상 큰따옴표로 감싸고
+ * 그 안의 백슬래시·큰따옴표만 이스케이프한다.
+ */
+export function escapeOrFilterValue(value: string): string {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+/** 검색어를 제목/주최기관에 대해 안전하게 ILIKE 매칭하는 or() 필터 문자열을 만든다. */
+export function buildActivitySearchOrFilter(q: string): string {
+  const pattern = escapeOrFilterValue(`%${q}%`);
+  return `title.ilike.${pattern},org_name.ilike.${pattern}`;
+}
+
 export async function queryActivities(supabase: SupabaseClient, filters: ActivityFilters) {
   const nowIso = new Date().toISOString();
   const closingSoonThresholdIso = new Date(Date.now() + CLOSING_SOON_HOURS * 60 * 60 * 1000).toISOString();
@@ -57,7 +74,7 @@ export async function queryActivities(supabase: SupabaseClient, filters: Activit
     .eq("status", "published");
 
   if (filters.q) {
-    query = query.or(`title.ilike.%${filters.q}%,org_name.ilike.%${filters.q}%`);
+    query = query.or(buildActivitySearchOrFilter(filters.q));
   }
   if (filters.typeId) {
     query = query.eq("activity_type_id", filters.typeId);
