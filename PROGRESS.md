@@ -693,15 +693,32 @@ CRON_SECRET=여기에_임의의_긴_문자열을_넣으세요
 
 | # | 심각도 | 분류 | 파일 | 문제 | 영향 | 수정 방안 | 상태 |
 |---|---|---|---|---|---|---|---|
-| 1 | Medium | 비효율(상시 반복 워크로드) | `supabase/migrations`(신규) | `matching_queue`에 `(status, activity_id, template_id)` 복합 인덱스 없음 — `run_match_worker()`가 pg_cron으로 **매분** 이 조합으로 스캔 | 활동·템플릿 수가 늘수록 매분 풀스캔 비용 증가 | 신규 마이그레이션으로 인덱스 추가(순수 추가, 동작 불변) | 수정 예정 |
-| 2 | Medium | 비효율(인덱스 누락) | `supabase/migrations`(신규) | `match_proposal_members.queue_id`(ON DELETE CASCADE FK) 인덱스 없음 — 직접 조회 2곳 + CASCADE 삭제마다 스캔 | 조회·활동 삭제 시 불필요한 전체 스캔 | 신규 마이그레이션으로 인덱스 추가(순수 추가, 동작 불변) | 수정 예정 |
-| 3 | Medium | 비효율(N+1) | `src/app/me/withdraw/page.tsx:26-38` | 팀장인 파티 수(N)만큼 `count` 쿼리를 반복 실행 | 쿼리 1+N번(팀장 파티가 많을수록 느려짐) | 파티 ID 목록으로 한 번에 조회해 그룹화(결과 동일) | 수정 예정 |
-| 4 | Low | 쓸모없음(죽은 의존성) | `package.json` | `zod`가 `src/` 어디에도 import되지 않음 | 불필요한 설치 용량 | `dependencies`에서 제거 + lockfile 갱신 | 수정 예정 |
-| 5 | Low | 쓸모없음(죽은 의존성) | `package.json` | `@testing-library/react`·`@testing-library/jest-dom`이 쓰이지 않음(`.test.tsx` 없음) | 불필요한 설치 용량 | `devDependencies`에서 제거 + lockfile 갱신 | 수정 예정 |
-| 6 | Low | 쓸모없음(중복 코드) | `src/app/admin/activities/ActivityForm.tsx:9-22` | `toDateTimeLocalFromIso`/`toDateTimeLocal` 완전 동일 함수 2개 | 유지보수 혼란 | 하나로 병합 | 수정 예정 |
+| 1 | Medium | 비효율(상시 반복 워크로드) | `supabase/migrations`(신규) | `matching_queue`에 `(status, activity_id, template_id)` 복합 인덱스 없음 — `run_match_worker()`가 pg_cron으로 **매분** 이 조합으로 스캔 | 활동·템플릿 수가 늘수록 매분 풀스캔 비용 증가 | 신규 마이그레이션으로 인덱스 추가(순수 추가, 동작 불변) | ✅ 완료 |
+| 2 | Medium | 비효율(인덱스 누락) | `supabase/migrations`(신규) | `match_proposal_members.queue_id`(ON DELETE CASCADE FK) 인덱스 없음 — 직접 조회 2곳 + CASCADE 삭제마다 스캔 | 조회·활동 삭제 시 불필요한 전체 스캔 | 신규 마이그레이션으로 인덱스 추가(순수 추가, 동작 불변) | ✅ 완료 |
+| 3 | Medium | 비효율(N+1) | `src/app/me/withdraw/page.tsx:26-38` | 팀장인 파티 수(N)만큼 `count` 쿼리를 반복 실행 | 쿼리 1+N번(팀장 파티가 많을수록 느려짐) | 파티 ID 목록으로 한 번에 조회해 그룹화(결과 동일) | ✅ 완료 |
+| 4 | Low | 쓸모없음(죽은 의존성) | `package.json` | `zod`가 `src/` 어디에도 import되지 않음 | 불필요한 설치 용량 | `dependencies`에서 제거 + lockfile 갱신 | ✅ 완료 |
+| 5 | Low | 쓸모없음(죽은 의존성) | `package.json` | `@testing-library/react`·`@testing-library/jest-dom`이 쓰이지 않음(`.test.tsx` 없음) | 불필요한 설치 용량 | `devDependencies`에서 제거 + lockfile 갱신 | ✅ 완료 |
+| 6 | Low | 쓸모없음(중복 코드) | `src/app/admin/activities/ActivityForm.tsx:9-22` | `toDateTimeLocalFromIso`/`toDateTimeLocal` 완전 동일 함수 2개 | 유지보수 혼란 | 하나로 병합 | ✅ 완료 |
 | 7 | Low | 에러 유발(에러 메시지 정확도) | `src/app/admin/activities/actions.ts`(`deleteMatchTemplateAction`) | 모든 삭제 실패를 "이미 신청 있음" 고정 문구로 표시 | 다른 원인(권한·네트워크)도 같은 문구로 오진단 | 에러 코드별 분기 필요 | **확인 필요**(사용자 노출 문구 변경이라 보류) |
 | 8 | Low | 에러 유발(동시성) | `src/app/activities/bookmark-actions.ts`(`toggleBookmark`) | 조회 후 분기 방식 — 연타 시 두 번째 요청이 `23505`로 raw 에러 노출 | 드문 경쟁 상황에서 사용자에게 기술적 에러 문구 노출 | `blockUserAction`처럼 `23505`를 성공으로 처리 | **확인 필요**(에러→성공으로 바뀌는 동작 변경) |
 | 9 | Low | 에러 유발(필터 문법) | `src/app/activities/queries.ts:60,66` | 검색어/지역에 쉼표·괄호 등이 있으면 PostgREST 필터 문법이 깨짐 | 이미 `ErrorRetry`로 안전하게 처리되어 크래시는 없음, 다만 검색이 조용히 실패 | 값 이스케이프 또는 파라미터화 필요 | **확인 필요**(검색 결과가 "실패"→"성공"으로 바뀌는 동작 변경) |
 | 10 | Low | 에러 유발(가드 불일치) | `src/app/parties/[id]/edit/EditPartyForm.tsx:14-19` | `toDatetimeLocal`에 날짜 파싱 실패 가드 없음(다른 2개 버전엔 있음) | `recruit_deadline`이 비정상 값일 때 입력창에 "NaN" 표시 가능(실제 발생 가능성 매우 낮음) | `Number.isNaN` 가드 추가 | **확인 필요**(엣지 케이스 동작 변경) |
 
-#1~#6은 "사용자에게 보이는 동작 불변" 원칙을 지키는 순수 정리·추가라 바로 진행한다. #7~#10은 사용자 노출 문구·동작이 달라지므로 고치지 않고 위 표에 "확인 필요"로만 남긴다.
+#1~#6은 "사용자에게 보이는 동작 불변" 원칙을 지키는 순수 정리·추가라 바로 진행했다. #7~#10은 사용자 노출 문구·동작이 달라지므로 고치지 않고 위 표에 "확인 필요"로 남겼다.
+
+### 적용 순서와 검증 결과
+
+1. **쓸모없는 코드 (#4·#5·#6, 커밋 `3a3b0f8`):** `zod`/`@testing-library/react`/`@testing-library/jest-dom` 제거(`npm install`로 lockfile 갱신, 20개 패키지 제거) + `ActivityForm.tsx`의 중복 함수 병합. 검증: `lint`/`typecheck`/`build` 통과, `npm test` 274/274 통과.
+2. **비효율 (#1·#2·#3):** `matching_queue(status, activity_id, template_id)`·`match_proposal_members(queue_id)` 인덱스를 새 마이그레이션(`20261004110000`, `20261004120000`)으로 추가(기존 마이그레이션 파일은 수정하지 않음) + `/me/withdraw` 페이지의 N+1 쿼리를 파티 ID 목록 기반 단일 쿼리로 교체(반환 결과는 동일). 검증: `supabase db reset`으로 새 마이그레이션이 깨끗이 적용됨을 확인 → `lint`/`typecheck`/`build` 통과 → `npm test` 274/274 통과 → `npm run test:e2e` 9/9 통과.
+
+### 고치지 않은 것(확인 필요 — 위 표 #7~#10)
+
+네 가지 모두 "사용자에게 보이는 동작은 바꾸지 말라"는 지시 때문에 보류했다. 실제로 고치려면 각각:
+- **#7 (`deleteMatchTemplateAction`):** DB 에러 코드(FK 위반 `23503` 등)를 확인해 분기하고, 그 외 에러는 원래 메시지를 보여주도록 바꿔야 한다.
+- **#8 (`toggleBookmark`):** insert 실패 시 `error.code === "23505"`면 "이미 북마크됨"으로 간주해 성공 처리(이미 같은 패턴을 쓰는 `blockUserAction` 참고).
+- **#9 (`activities/queries.ts`):** `filters.q`/`filters.region`에서 PostgREST 필터 문법상 의미 있는 문자(`,`, `(`, `)`, `%`, `*`)를 이스케이프하거나, `.textSearch`/파라미터 바인딩 방식으로 바꿔야 한다.
+- **#10 (`EditPartyForm.tsx`의 `toDatetimeLocal`):** 다른 두 버전처럼 `Number.isNaN(date.getTime())` 가드를 추가해야 한다.
+
+### 다음에 할 일
+
+이번 검수에서 발견한 항목은 모두 처리(수정 또는 "확인 필요" 기록)했다. 남은 것은 위 "확인 필요" 4건에 대한 사용자 판단뿐이다 — 기능 동작이 달라지는 수정이라 이 세션에서 임의로 반영하지 않았다.

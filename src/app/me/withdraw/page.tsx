@@ -23,19 +23,24 @@ export default async function WithdrawPage() {
     .eq("is_leader", true)
     .returns<LeaderPartyRow[]>();
 
-  const blockingParties: { id: string; title: string }[] = [];
-  for (const row of leaderRows ?? []) {
-    if (!row.parties) continue;
-    const { count } = await supabase
+  const ledParties = (leaderRows ?? []).filter((row) => row.parties);
+  const ledPartyIds = ledParties.map((row) => row.party_id);
+
+  // 팀장인 파티마다 "다른 활성 멤버가 있는지"를 쿼리 1회로 함께 확인한다(파티 수만큼 반복 조회하지 않음).
+  const partyIdsWithOtherActiveMembers = new Set<string>();
+  if (ledPartyIds.length > 0) {
+    const { data: otherMembers } = await supabase
       .from("party_members")
-      .select("profile_id", { count: "exact", head: true })
-      .eq("party_id", row.party_id)
+      .select("party_id")
+      .in("party_id", ledPartyIds)
       .eq("status", "active")
       .neq("profile_id", user.id);
-    if ((count ?? 0) > 0) {
-      blockingParties.push({ id: row.parties.id, title: row.parties.title ?? "제목 없는 파티" });
-    }
+    for (const m of otherMembers ?? []) partyIdsWithOtherActiveMembers.add(m.party_id);
   }
+
+  const blockingParties: { id: string; title: string }[] = ledParties
+    .filter((row) => partyIdsWithOtherActiveMembers.has(row.party_id))
+    .map((row) => ({ id: row.parties!.id, title: row.parties!.title ?? "제목 없는 파티" }));
 
   return (
     <PageContainer>
