@@ -1016,3 +1016,33 @@ G3에서 분야 확정을 수정 화면("confirm" 모드)으로만 좁혀 뒀는
 - **새 의존성:** `tsx`(devDependency) — `npm run eval:recommend`가 TypeScript 스크립트에서
   `src/lib/recommend.ts`를 직접 import해 재사용하기 위해 추가했다(추천 로직을 스크립트용으로
   중복 구현하지 않기 위한 선택). 서비스 런타임 코드에는 포함되지 않는다.
+
+## 8장 체크리스트 — "모델 없이 지금 완료할 것" 충족 여부
+
+G1~G4(위 각 절)로 9장 작업 단위가 전부 끝났으므로, 가이드 8장 체크리스트의 첫 번째 묶음
+("모델 없이 지금 완료할 것" 11개)을 실제 구현·테스트에 연결해 정리한다. 두 번째 묶음("모델
+학습 후 완료할 것" 4개)은 실제 모델이 아직 없어 이번 범위에 포함하지 않는다(의도적으로 그대로
+둔다 — 표 아래 참조).
+
+| # | 항목 | 충족 | 근거 |
+|---|---|---|---|
+| 1 | 12개 분야가 관심분야·활동 분야·전공 연결표·모델 연결표에서 같은 ID로 쓰인다 | ✅ | G1에서 `interests`(고정 UUID 12개)를 공통 분야로 두고, `profile_interests`/`activity_fields`/`major_field_weights`/`model_class_field_map`이 모두 그 `interest_id`를 FK로 참조한다. |
+| 2 | 서울캠퍼스 전공 목록과 확인일·출처가 등록되고, 모든 활성 전공에 1.0 연결이 있다 | ✅ | G1: 공식 페이지 재확인 후 35개 전공을 `source_url`/`verified_at`과 함께 등록. 마이그레이션 자체 검증 `do` 블록이 "모든 활성 전공이 1.0 연결 최소 1개"를 강제하고, `db reset`으로 실제 0건 누락을 확인했다. |
+| 3 | 복수전공·부전공과 추천 반영 여부, 전공 미배정 상태를 프로필에서 바꿀 수 있다 | ✅ | G1: `profile_majors.kind`(primary/double/minor)·`use_for_recommendation`, `profiles.major_status`(4종) + 온보딩/프로필 수정 화면. E2E(`auth-onboarding.spec.ts`)로 입력·복원 확인. |
+| 4 | 추천 모드별 가중치 합이 1이고, 전공·관심·모드를 바꾸면 추천이 갱신된다 | ✅ | G2: `app_settings.recommendation_modes`(4모드) + `recommend.ts` 재작성. 단위 테스트로 가중치 합 1 확인, G2 보완에서 실제 시드로 전공·관심분야가 바뀌면 추천 상위권이 실제로 바뀜을 직접 확인. |
+| 5 | 전공 관련성과 지원 자격이 분리되어 있다 | ✅ | G2: `activities.eligibility_scope`/`eligible_major_ids`가 `major_field_weights`(추천용)와 완전히 별개 축. `rankActivities`가 전공 연결표로 지원 가능 여부를 판단하지 않음을 단위 테스트(`recommend.test.ts`)로 명시 검증. |
+| 6 | 모델 미설치 상태에서 등록·확정·추천이 모두 정상 동작한다 | ✅ | G3 E2E(`poster-classifier-model-missing.spec.ts`, 수정 화면)와 G3 보완 E2E(`poster-field-confirmation-atomic.spec.ts`, 등록 화면)로 모델 없이 등록·분야 확정·추천 전체 흐름이 끊기지 않음을 확인. |
+| 7 | 분석 실패와 불확실한 결과가 구분되어 저장된다 | ✅ | G3: `poster_analyses.status`(suggested/needs_review/failed) + `failure_reason` CHECK(`poster_analyses_failure_reason_matches_status`)로 "실패를 점수 0이나 분야로 꾸미지 않음"을 DB 레벨에서 강제, RLS 테스트로 검증. |
+| 8 | 모델 후보와 관리자 확정값이 분리되고, 재분석이 확정값을 바꾸지 않는다 | ✅ | G3: `activity_fields.analysis_id` FK `on delete set null`(분석이 지워져도 확정값은 남음, RLS 테스트로 검증). G3 보완: 제보자는 `activity_field_proposals`(제안)에만 쓰고, 관리자가 승인할 때만 `activity_fields`(확정)에 쓴다 — 제보자가 확정 함수를 호출하면 `NOT_ADMIN`으로 거부됨을 테스트로 확인. |
+| 9 | 학습 변환과 서비스 분석이 같은 전처리 함수를 쓴다 | ✅ | G3: `src/lib/poster/preprocess.ts`(`computeSquarePlacement`/`renderToSquareCanvas`) 하나를 서비스 분석(`PosterClassifierPanel`)과 G4 학습 이미지 변환(`ImagePreprocessSection`)이 그대로 공유. |
+| 10 | 사용자 화면에 모델 점수를 적합도처럼 보여주지 않는다 | ✅ | G3: `PosterClassifierPanel`이 분류 점수를 항상 "참고용 — 지원 적합도가 아니에요"로 라벨링하고, needs_review는 클릭 불가능한 "참고"로만 표시. |
+| 11 | 예비 모델 밖 8개 분야도 수동 태그로 등록·추천된다 | ✅ | G2 E2E(`activity-fields-recommendation.spec.ts`) — 예비 모델 4클래스 밖인 "스포츠·운동·건강관리"를 관리자가 수동 확정 → 그 분야만 고른 신규 사용자에게 추천 근거로 실제 반영됨을 end-to-end로 확인. |
+
+**요약: 11개 전부 ✅.** 9장 작업 단위(G1~G4)가 모두 완료되어, 가이드 8장의 "모델 없이 지금
+완료할 것" 묶음도 전부 충족한다.
+
+**"모델 학습 후 완료할 것"(4개)은 이번 범위에 포함하지 않았다** — 실제 모델 파일이 아직 없기
+때문이다(의도적, G3 설계 메모 그대로): 실제 모델 브라우저 분석 동작 확인, 처음 보는 기관·범위
+밖 이미지 평가 기록, dev 결과 기반 임계값 확정, 추천 평가(Precision@5·자격 위반 0건) 기록.
+G4가 그 네 가지를 수행할 **도구**(`/admin/model-lab`, `npm run eval:recommend`)는 전부
+준비해 뒀으므로, 실제 모델이 생기면(가이드 7장 실험 절차) 그 도구로 바로 이어서 수행하면 된다.
