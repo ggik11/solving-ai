@@ -45,6 +45,7 @@ const ALLOWLIST: Record<string, readonly ("anon" | "authenticated")[]> = {
   "mark_chat_read(uuid, uuid)": ["authenticated"],
   "mark_notification_read(uuid)": ["authenticated"],
   "record_poster_analysis(uuid, text, text, text, jsonb, text, numeric, numeric, text, text)": ["authenticated"],
+  "register_classifier_model(text, uuid, text[])": ["authenticated"],
   "reject_activity_submission(uuid, text)": ["authenticated"],
   "reject_application(uuid)": ["authenticated"],
   "reopen_party(uuid)": ["authenticated"],

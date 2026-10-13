@@ -1046,3 +1046,66 @@ G1~G4(위 각 절)로 9장 작업 단위가 전부 끝났으므로, 가이드 8�
 밖 이미지 평가 기록, dev 결과 기반 임계값 확정, 추천 평가(Precision@5·자격 위반 0건) 기록.
 G4가 그 네 가지를 수행할 **도구**(`/admin/model-lab`, `npm run eval:recommend`)는 전부
 준비해 뒀으므로, 실제 모델이 생기면(가이드 7장 실험 절차) 그 도구로 바로 이어서 수행하면 된다.
+
+## 티처블 머신 연동 보완: 클래스 구성 분리와 모델 등록 화면 (완료)
+
+G1~G4(위 각 절)가 "모델이 아직 없는" 상태를 전제로 골격을 완성한 뒤, 실제로 모델을 연결하려
+해 보니 두 가지가 막혀 있었다: (1) `model_class_field_map`이 비어 있으면 `/admin/model-lab`의
+manifest 라벨 검사(가이드 6.2)가 "검사할 기준이 없음"으로 통째로 건너뛰어 정상 라벨도 검증받지
+못했고, (2) 실제 모델을 `public/models/poster-classifier/`에 넣어도 그 `model_version`을
+`model_class_field_map`에 연결할 화면·절차가 전혀 없어 후보 제안이 영구히 꺼진 채였다. 둘 다
+근본 원인은 같다 — "어떤 class_id가 유효한가"(클래스 구성)와 "실제 배포된 모델이 그 구성과
+맞는가"(모델 버전 연결)를 분리해 두지 않았다.
+
+- **클래스 구성 테이블 (마이그레이션 `20261013060000`):** `classifier_class_sets`(구성 자체,
+  `is_active`로 한 번에 하나만 활성화 — 상수 표현식에 건 부분 유니크 인덱스로 DB 레벨에서
+  강제)와 `classifier_class_set_classes`(구성에 속한 class_id → 서비스 분야 후보, 가이드 3.6
+  표 그대로)를 신설했다. 시드가 아니라 **이 마이그레이션이 직접** 예비 구성 `pilot-4-v1`
+  (IT_DATA/BUSINESS_PLANNING/DESIGN_MEDIA/SOCIAL_ENVIRONMENT, SOCIAL_ENVIRONMENT는
+  SOCIAL_WELFARE·ENERGY_ENVIRONMENT 둘 다)을 활성 상태로 넣는다 — 운영 환경에도 적용되어야
+  "모델 없이도 manifest 검사가 항상 동작한다"는 목표가 성립하기 때문이다. RLS는 기존
+  `model_class_field_map`과 같은 패턴(공개 읽기, 운영자 전용 쓰기).
+- **manifest 라벨 검사 기준 교체:** `/admin/model-lab`(`page.tsx`)이 `knownClassIds`를
+  더 이상 `model_class_field_map`에서 모으지 않고, 활성 클래스 구성의 class_id 집합
+  (`src/lib/modelLab/classSets.ts`의 `activeClassIds`)에서 가져온다. `ManifestCheckSection`
+  자체(순수 함수 `findInvalidLabels` 호출부)는 바뀌지 않았다 — 입력 데이터의 출처만 바뀌었다.
+- **모델 등록 (`classifier_model_registrations` 테이블 + `register_classifier_model()` 함수,
+  같은 마이그레이션):** `/admin/model-lab`에 새 "모델 등록" 섹션(`ModelRegistrationSection.tsx`)을
+  추가했다. 서버 컴포넌트(`page.tsx`)가 `public/models/poster-classifier/metadata.json`을
+  **파일시스템에서 직접 읽어**(브라우저 fetch가 아니라 — 이 섹션은 서버에서 돈다) 모델 버전과
+  labels를 보여준다. 파일이 없으면 "모델 미설치"만 보인다(가짜 메타데이터를 만들지 않는다).
+  관리자가 클래스 구성을 고르면 labels와 그 구성의 class_id 집합을 비교해(`labelsMatchClassSet`,
+  순수 함수) 정확히 일치할 때만 등록 버튼이 활성화된다 — 다만 이건 UX 보조일 뿐, 실제 가드는
+  DB 함수 `register_classifier_model()` 안의 `LABELS_MISMATCH` 체크다(관리자 권한 없이 호출해도
+  `NOT_ADMIN`으로 거부). 등록하면 ① `classifier_model_registrations`에 (모델 버전, 선택한 구성,
+  등록자, 등록 시각)을 `on conflict (model_version) do update`로 기록하고(재등록해도 행이
+  늘지 않음 — 멱등), ② 그 모델 버전의 기존 `model_class_field_map` 행을 지우고 선택한 구성에서
+  다시 복사해 채운다(재등록해도 중복 행이 생기지 않음).
+- **평가 화면 기본 모드:** `ModelEvaluationSection`에 `isModelRegistered` prop을 추가해, 지금
+  설치된 모델 버전이 `classifier_model_registrations`에 등록되어 있으면 기본 모드를 "예측 결과
+  CSV 업로드"가 아니라 "이미지 + manifest로 모델 실행"으로 연다(등록 전에는 기존 동작 그대로
+  CSV 업로드가 기본).
+- **검증:** 단위 테스트(`tests/unit/model-lab-class-sets.test.ts`, 6건) — `activeClassIds`/
+  `labelsMatchClassSet` 순수 함수. RLS 테스트(`tests/rls/classifier_class_sets.test.ts`, 11건) —
+  마이그레이션이 넣은 `pilot-4-v1` 구성이 가이드 3.6 표와 정확히 일치하는지, 그 class_id로
+  manifest 라벨 검사가 실제로 통과/실패하는지(`findInvalidLabels`를 실제 DB 데이터와 함께
+  호출), `register_classifier_model`이 labels 불일치 시 거부(`LABELS_MISMATCH`)하는지, 일반
+  사용자는 `NOT_ADMIN`으로 거부되는지, labels가 일치하면 등록되고 `model_class_field_map`이
+  복사되어 목 모델의 클래스가 후보로 해석 가능해지는지, 같은 버전을 두 번 등록해도
+  `classifier_model_registrations`/`model_class_field_map` 모두 행이 늘지 않는지(멱등),
+  `classifier_class_sets`/`classifier_class_set_classes`가 공개 읽기·운영자 전용 쓰기인지,
+  `classifier_model_registrations`는 운영자만 조회 가능한지. `tests/rls/execute_privileges.test.ts`
+  허용 목록에 `register_classifier_model`을 추가했다. E2E
+  (`tests/e2e/model-lab-classifier-registration.spec.ts`, 신규 2건) — 모델 미설치 상태에서
+  "모델 등록" 섹션이 안내 문구를 보여주고 평가 기본 모드가 CSV 업로드인지 확인한 뒤, 테스트
+  동안만 임시 `metadata.json`(labels가 `pilot-4-v1`과 일치하는 픽스처 — 실제 model.json/
+  weights.bin은 없으므로 예측 자체는 돌리지 않는다)을 놓고 실제로 등록 버튼을 눌러 DB에
+  기록되는지, 새로고침 후 평가 기본 모드가 "모델 직접 실행"으로 바뀌는지 확인했다(`afterAll`에서
+  픽스처 파일과 DB 행을 모두 정리).
+  `npm test` **429/429 통과**(기존 412 + 신규 17), `npm run lint`/`npm run typecheck`/
+  `npm run build` 모두 성공, `npm run test:e2e`는 아래에서 실행해 결과를 기록한다.
+- **의도적으로 남긴 것:** 클래스 구성을 바꾸는 관리자 화면(활성 구성 전환 UI)은 만들지 않았다 —
+  지금은 구성이 `pilot-4-v1` 하나뿐이고, 요청 범위가 "등록 화면"이었지 "구성 관리 화면"이
+  아니었기 때문이다. 구성을 추가/전환해야 할 필요가 생기면(본 실험 단계에서 분야를 늘리는 경우
+  등) 새 마이그레이션으로 구성을 추가하고 `is_active`를 옮기면 된다(화면 없이도 SQL로 충분하며,
+  README "포스터 분류 모델 교체 절차"에 적어 뒀다).

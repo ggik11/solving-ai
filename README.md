@@ -104,6 +104,7 @@ http://127.0.0.1:3000 에서 접속합니다.
 | `/admin/reports` | 신고 관리 — 상태 변경, 신고된 메시지는 전후 3개만 열람 |
 | `/admin/accounts` | 계정 관리 — 닉네임 검색, 정지/해제 |
 | `/admin/audit-logs` | 감사 로그 — 운영자 조치 이력 |
+| `/admin/model-lab` | 실험 도구 — 학습 이미지 변환, 데이터 목록 검사, 모델 평가, 모델 등록 |
 
 ## 매칭 워커 실행
 
@@ -138,6 +139,34 @@ npm run worker:link-check
 ```
 
 (`scripts/run-link-check-worker.mjs`, `/api/cron/link-check`를 직접 호출합니다.)
+
+## 포스터 분류 모델 교체 절차
+
+`docs/teachable-machine-integration.md` 3.6/5.1, 9장 G3/G4 참조. 모델을 새로 학습하거나 교체할 때:
+
+1. 티처블 머신 Image Project에서 클래스 이름을 **고정 ID**(현재는 `pilot-4-v1` 구성의
+   `IT_DATA`/`BUSINESS_PLANNING`/`DESIGN_MEDIA`/`SOCIAL_ENVIRONMENT`)로 학습했는지 확인합니다.
+   클래스 구성 자체를 바꾸고 싶으면(분야 추가/제거) 먼저 새 마이그레이션으로
+   `classifier_class_sets`/`classifier_class_set_classes`에 새 구성을 추가해야 합니다 — 운영
+   환경에도 반영되어야 하므로 시드가 아니라 마이그레이션으로 추가합니다(`supabase/migrations/
+   20261013060000_classifier_class_sets.sql`이 예시).
+2. 내보낸 `model.json`/`metadata.json`/`weights.bin`을 `public/models/poster-classifier/`에
+   그대로 덮어씁니다(가중치 파일 이름을 바꾸지 않습니다). 학습 이미지는 커밋하지 않습니다.
+3. 배포 후 `/admin/model-lab`의 **"모델 등록"** 섹션을 엽니다. metadata.json에서 읽은 모델
+   버전과 labels가 표시됩니다 — 모델 파일이 아직 없으면 "모델 미설치"만 보입니다.
+4. labels와 **정확히 일치하는** 클래스 구성을 선택합니다(일치하지 않으면 등록 버튼이
+   비활성화됩니다). "등록"을 누르면 그 모델 버전의 `model_class_field_map` 행이 선택한 구성에서
+   복사되어 후보 제안이 켜집니다. 등록 시각과 등록자가 함께 기록되고, 같은 버전을 다시 등록해도
+   중복되지 않습니다(재등록 = 갱신).
+5. 등록 후에는 같은 화면의 "6.3 모델 평가"가 기본적으로 "이미지 + manifest로 모델 실행" 모드로
+   열립니다 — test/ood 자료로 실제 모델을 돌려 정확도·macro-F1·임계값 통과율을 확인하고
+   `docs/model-evaluation.md`에 기록합니다(가이드 6.3).
+6. 운영 중인 `app_settings.poster_classifier`의 `suggest_min_top_score`/`suggest_min_margin`을
+   평가 결과에 맞춰 조정합니다(운영자 전용 쓰기, `docs/operations.md` 참고).
+
+구 모델 버전의 `model_class_field_map` 행은 지우지 않습니다 — 과거에 그 버전으로 분석된
+`poster_analyses` 기록이 재분석 없이도 여전히 해석 가능해야 하기 때문입니다(가이드 체크리스트
+8번, "재분석이 확정값을 바꾸지 않는다").
 
 ## 테스트
 

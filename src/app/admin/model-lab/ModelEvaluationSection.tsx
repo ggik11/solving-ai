@@ -38,12 +38,15 @@ type InputMode = "predictions-csv" | "run-model";
  */
 export function ModelEvaluationSection({
   posterConfig,
+  isModelRegistered = false,
   loader = teachableMachineLoader,
 }: {
   posterConfig: PosterClassifierConfig;
+  /** 모델이 등록되어 있으면(가이드 3.6 보완) 기본 모드를 "모델 직접 실행"으로 연다. */
+  isModelRegistered?: boolean;
   loader?: PosterModelLoader;
 }) {
-  const [mode, setMode] = useState<InputMode>("predictions-csv");
+  const [mode, setMode] = useState<InputMode>(isModelRegistered ? "run-model" : "predictions-csv");
   const [predictions, setPredictions] = useState<LabeledPrediction[] | null>(null);
   const [parseNotice, setParseNotice] = useState<string | null>(null);
   const [running, setRunning] = useState(false);

@@ -1,9 +1,20 @@
 import { createClient } from "@/lib/supabase/server";
 import { PageContainer } from "@/components/PageContainer";
 import { loadPosterClassifierConfig } from "@/lib/poster/query";
+import { activeClassIds, loadClassifierClassSets } from "@/lib/modelLab/classSets";
+import { loadPosterModelMetadataFromDisk } from "@/lib/modelLab/modelMetadata";
 import { ImagePreprocessSection } from "./ImagePreprocessSection";
 import { ManifestCheckSection } from "./ManifestCheckSection";
 import { ModelEvaluationSection } from "./ModelEvaluationSection";
+import { ModelRegistrationSection, type ExistingClassifierRegistration } from "./ModelRegistrationSection";
+
+interface RegistrationRowDb {
+  model_version: string;
+  class_set_id: string;
+  registered_at: string;
+  profiles: { nickname: string } | null;
+  classifier_class_sets: { code: string } | null;
+}
 
 /**
  * 실험 도구(가이드 6장, G4) — 관리자 전용, 전부 브라우저에서 실행한다. 이미지는 서버로
@@ -11,11 +22,29 @@ import { ModelEvaluationSection } from "./ModelEvaluationSection";
  */
 export default async function ModelLabPage() {
   const supabase = await createClient();
-  const [posterConfig, { data: classMapRows }] = await Promise.all([
+  const [posterConfig, classifierClassSets] = await Promise.all([
     loadPosterClassifierConfig(supabase),
-    supabase.from("model_class_field_map").select("class_id"),
+    loadClassifierClassSets(supabase),
   ]);
-  const knownClassIds = [...new Set((classMapRows ?? []).map((r) => r.class_id as string))];
+  const metadata = await loadPosterModelMetadataFromDisk(posterConfig.modelPath);
+
+  let existingRegistration: ExistingClassifierRegistration | null = null;
+  if (metadata) {
+    const { data } = await supabase
+      .from("classifier_model_registrations")
+      .select("model_version, class_set_id, registered_at, profiles:registered_by(nickname), classifier_class_sets(code)")
+      .eq("model_version", metadata.modelVersion)
+      .maybeSingle<RegistrationRowDb>();
+    if (data) {
+      existingRegistration = {
+        modelVersion: data.model_version,
+        classSetId: data.class_set_id,
+        classSetCode: data.classifier_class_sets?.code ?? "",
+        registeredByNickname: data.profiles?.nickname ?? null,
+        registeredAt: data.registered_at,
+      };
+    }
+  }
 
   return (
     <PageContainer>
@@ -25,8 +54,13 @@ export default async function ModelLabPage() {
       </p>
       <div className="flex flex-col gap-4">
         <ImagePreprocessSection />
-        <ManifestCheckSection knownClassIds={knownClassIds} />
-        <ModelEvaluationSection posterConfig={posterConfig} />
+        <ManifestCheckSection knownClassIds={activeClassIds(classifierClassSets)} />
+        <ModelRegistrationSection
+          metadata={metadata}
+          classSets={classifierClassSets}
+          existingRegistration={existingRegistration}
+        />
+        <ModelEvaluationSection posterConfig={posterConfig} isModelRegistered={existingRegistration != null} />
       </div>
     </PageContainer>
   );

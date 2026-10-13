@@ -150,6 +150,21 @@
 - 한 클래스가 여러 후보로 연결될 수 있다(SOCIAL_ENVIRONMENT). 이 경우 관리자가 원문을 보고 고른다.
 - 모델을 교체하면 새 `model_version` 행을 추가한다. 매핑이 없는 모델 버전이 로드되면 "연결표 없음" 경고를 띄우고 후보 제안을 하지 않는다.
 
+**보완(G3 이후): 클래스 구성과 모델 버전 연결의 분리.** 위 표는 "어떤 class_id가 유효하고
+어떤 분야 후보로 이어지는가"(클래스 구성)와 "실제 배포된 모델이 그 구성과 맞는가"(모델 버전
+연결)를 한 테이블에 섞어 두고 있었다. 모델이 배포되기 전까지 `model_class_field_map`이 비어
+있으면 manifest 라벨 검사(6.2)가 기준 없이 건너뛰는 문제가 있어, 둘을 분리했다:
+- `classifier_class_sets`/`classifier_class_set_classes`(신규, 마이그레이션 `20261013060000`)가
+  클래스 구성을 정의한다. 예비 구성 `pilot-4-v1`(위 표 그대로)을 마이그레이션으로 등록해 모델이
+  없어도 manifest 검사·클래스 ID 유효성 확인이 항상 가능하다. `classifier_class_sets.is_active`로
+  한 번에 하나의 구성만 활성화한다.
+- `model_class_field_map`은 그대로 "모델 버전별 실제 연결표" 역할을 유지한다. 관리자가
+  `/admin/model-lab`에서 모델을 **등록**(`register_classifier_model()`)하면, labels가 선택한
+  클래스 구성과 정확히 일치하는지 검증한 뒤 그 구성의 행을 복사해 채운다 — 손으로 입력하지
+  않는다.
+- manifest 라벨 검사(6.2)는 이제 `model_class_field_map`이 아니라 **활성 클래스 구성**의
+  class_id 집합을 기준으로 한다 — 모델 등록 여부와 무관하게 항상 검사할 수 있다.
+
 ### 3.7 설정 (`app_settings`)
 
 ```json
