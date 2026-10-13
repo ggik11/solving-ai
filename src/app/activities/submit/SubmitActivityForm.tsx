@@ -4,6 +4,8 @@ import { useState } from "react";
 import { submitActivityAction } from "./actions";
 import { previewActivitySubmissionUrlAction } from "./import-url-actions";
 import { UrlImportPanel, type UrlImportApplyAction } from "@/components/UrlImportPanel";
+import { PosterClassifierPanel, type InterestLabel } from "@/components/PosterClassifierPanel";
+import type { PosterClassifierConfig } from "@/lib/poster/classifier";
 
 function toDateTimeLocalFromIso(iso: string): string {
   const date = new Date(iso);
@@ -12,7 +14,13 @@ function toDateTimeLocalFromIso(iso: string): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-export function SubmitActivityForm() {
+export function SubmitActivityForm({
+  interests,
+  posterConfig,
+}: {
+  interests: InterestLabel[];
+  posterConfig: PosterClassifierConfig;
+}) {
   const [title, setTitle] = useState("");
   const [summary, setSummary] = useState("");
   const [description, setDescription] = useState("");
@@ -84,6 +92,7 @@ export function SubmitActivityForm() {
         onApply={handleImportApply}
         enabledFields={["title", "orgName", "description", "sourceUrl", "date"]}
       />
+      <PosterClassifierPanel variant="preview" activityId={null} config={posterConfig} interests={interests} />
       {error && (
         <p role="alert" className="rounded-md bg-[var(--color-danger-bg)] px-3 py-2 text-sm text-[var(--color-danger)]">
           {error}

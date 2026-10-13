@@ -606,6 +606,47 @@ E2E가 이 보호 장치를 브라우저로 직접 검증하려면 로컬 고정
   저장소에서 실제로 등록하지는 않았다 — README "활동 URL 가져오기 / 링크 정기 점검" 참조).
   로컬 확인용으로 `npm run worker:link-check`(`scripts/run-link-check-worker.mjs`)도 제공한다.
 
+## 15. 티처블 머신 연동 — 모델 로딩 라이브러리 결정 (G3, 가이드 5.2)
+
+`docs/teachable-machine-integration.md` 5.2절은 공식 `@teachablemachine/image`를 1순위로 시도하고,
+Next.js 16/React 19에서 빌드되지 않으면 최신 `@tensorflow/tfjs`의 `loadLayersModel`로 직접
+재구현하는 2순위안을 쓰라고 정한다. 실제로 둘 다 설치해 확인했다.
+
+- **확인 방법:** `@teachablemachine/image@0.8.5`(이 패키지가 요구하는 정확한 peer
+  `@tensorflow/tfjs@1.3.1`과 함께)를 `--save-exact`로 설치한 뒤, 이 페이지에서만 동적 import하는
+  임시 라우트를 만들어 `next build`(Turbopack)로 빌드하고, 실제 프로덕션 서버(`next start`)를
+  띄워 Playwright로 브라우저에서 `import("@teachablemachine/image")`가 에러 없이 끝나고
+  `tmImage.load`가 함수로 존재하는지 직접 확인했다. 빌드·런타임 모두 문제없이 통과했다.
+- **결정: 1순위(공식 라이브러리)를 그대로 쓴다.** `@teachablemachine/image@0.8.5` +
+  `@tensorflow/tfjs@1.3.1`을 정확한 버전으로 고정해 `package.json`에 등록했고,
+  `src/lib/poster/modelLoader.ts`의 `teachableMachineLoader`에서만 동적 import한다(다른 페이지
+  번들에 들어가지 않음).
+- **알려진 트레이드오프(2순위로 넘어가지 않고 받아들인 것):** `npm audit` 기준 이 두 패키지와
+  그 전이 의존성(`node-fetch` 등, tfjs-core의 Node.js 플랫폼 백엔드가 쓴다)에서 high severity
+  취약점이 보고된다. tfjs 1.3.1은 2019년에 나온 버전이라 당연한 결과다. 다만 이 코드가 실행되는
+  경로는 **브라우저에서의 동적 import뿐**이고(`loadLayersModel`을 서버에서 호출하지 않음,
+  Node 플랫폼 백엔드 코드는 브라우저 번들에 들어가지 않는다), 취약점은 모두 Node.js 플랫폼
+  백엔드(`node-fetch` 기반 모델 다운로드)에 있어 실제 공격 표면과 무관하다고 판단했다. 그래도
+  `npm audit`에는 계속 나타나므로, CI에 감사 게이트가 추가되면 이 두 패키지는 예외 처리가
+  필요하다 — 기록해 둔다.
+- **`model_version` 읽는 법(가이드 5.1 "필드 이름은 실제 파일을 보고 확정"):** 티처블 머신이
+  내보내는 `metadata.json`에는 공식적으로 "버전" 필드가 없다. `CustomMobileNet.Metadata`
+  타입 정의(`@teachablemachine/image/dist/custom-mobilenet.d.ts`)에 `timeStamp?: string`
+  (내보낸 시각)가 있어 이를 모델 버전 식별자로 쓰기로 했다 — 커뮤니티 관례이자 가장 그럴듯한
+  대체재다. **실제 모델이 들어오면 내보낸 `metadata.json`을 직접 열어 `timeStamp`가 실제로
+  존재하고 모델 재학습마다 바뀌는지 재확인해야 한다.** 다르면 `src/lib/poster/modelLoader.ts`의
+  `metadata.timeStamp ?? "unknown"` 부분만 고치면 된다 — 그 외 코드는 `modelVersion`을
+  불투명한 문자열로만 다룬다.
+- **모델 없이 확인한 것과 못한 것:** 라이브러리 자체의 import/빌드 호환성은 위 방법으로 실제
+  확인했다. 반면 `tmImage.load(modelURL, metadataURL)`로 실제 모델 파일을 불러와 추론까지
+  되는지는 **진짜 모델 파일이 없어 확인하지 못했다** — `src/lib/poster/modelLoader.ts`의
+  `teachableMachineLoader.load()`는 모델 미설치 상태에서 `ModelMissingError`로 실패하는 경로까지만
+  실제로 검증됐다(`tests/e2e/poster-classifier-model-missing.spec.ts`). 실제 모델이 생기면 7장
+  실험 절차의 "test·ood 평가"와 함께, 같은 이미지 몇 장으로 티처블 머신 웹 미리보기 점수와
+  이 저장소의 `predict()` 결과가 일치하는지 반드시 비교해야 한다(가이드 5.2 2순위안에 쓰여 있는
+  검증 절차이지만, 1순위를 그대로 썼더라도 "점수가 맞게 나오는지"는 공식 라이브러리를 쓴다고
+  자동으로 보장되지 않으므로 똑같이 필요하다).
+
 ## 변경 이력
 
 - 2026-10-03: 1단계(설계) 초안 작성. 코드 없음.
@@ -615,4 +656,5 @@ E2E가 이 보호 장치를 브라우저로 직접 검증하려면 로컬 고정
   3. **엔티티 보완** (4장): 지시서 11장의 엔티티 수를 "22개"에서 실제 목록 기준 "24개"로 정정(집계 오류 수정)하고, 운영/설정 그룹으로 `majors`(운영자 편집 가능, `is_demo` 플래그), `app_settings`(허용 이메일 도메인, 추천 가중치, 매칭 수락 기한), `user_roles`(관리자 권한, 프로필과 분리), `notifications.dedupe_key`(알림 중복 발송 방지 키)를 추가. 10장 2단계 완료 기준의 엔티티 수 표기도 동기화.
 - 2026-10-04: 4-A단계(팀 채팅 + 앱 내 알림) 구현. 11장 신설 — DB 함수 경유 쓰기, Realtime 전달 방식을 postgres_changes에서 Broadcast-from-Database로 변경한 이유와 설계(수동 검증으로 "private 채널은 Postgres Changes에 적용되지 않는다"는 사실을 발견), 알림 방 단위 묶음·"보고 있으면 생성 안 함" 근사 구현, 탈퇴·강퇴 시 접근 차단(이미 열려 있는 연결 포함) 메커니즘, 메시지 링크화 방식을 기록.
 - 2026-10-04: 4-B단계(빠른 매칭) 구현. 12장 신설 — 역할 구성 템플릿 스키마, 매칭 알고리즘을 TS 순수 함수(단위 테스트)와 plpgsql(실제 워커 경로, pg_cron이 Node를 호출할 수 없어 독립 재구현)로 이원화한 설계와 근거, 전체 공통 시간을 PostgreSQL 멀티레인지 연산자로 계산하는 방법, run_match_worker의 3단계 처리와 동시성 보장(SKIP LOCKED + 행 잠금 멱등 가드), 실제 구현 기준 상태 전이, Realtime 접근 차단 재검토(docs/operations.md로 연결) 기록.
+- 2026-10-13: G3(티처블 머신 연동 골격) 구현. 15장 신설 — `@teachablemachine/image`(공식 1순위안)를 실제로 설치·빌드·브라우저에서 import해 확인한 과정과 결정, `npm audit` 취약점을 받아들인 이유(브라우저 동적 import 경로만 쓰고 취약점은 Node 플랫폼 백엔드에 있어 실제 공격 표면과 무관), `metadata.json`에 공식 버전 필드가 없어 `timeStamp`를 모델 버전으로 대신 쓰기로 한 결정과 "실제 모델이 생기면 재확인해야 할 것"을 기록.
 - 2026-10-04: 링크 붙여넣기 활동 등록 구현. 13장에 "함수 파라미터 개수를 바꿀 때는 옛 시그니처를 먼저 drop해야 한다"는 규칙 추가(실제로 겪은 버그). 14장 신설 — SSRF 방어가 적용된 단일 페이지 가져오기, 규칙 우선·AI 선택인 추출·검증 흐름, 날짜 검증 상태를 실제로 추적하는 방식(접수 마감 필드), 매칭 워커와 달리 외부 HTTP가 필요해 pg_cron 대신 Route Handler + 외부 스케줄러로 구현한 정기 점검의 이유와 설계를 기록.

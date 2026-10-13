@@ -5,6 +5,8 @@ import { createActivity, updateActivity, type ActivityFormInput } from "./action
 import { previewActivityImportUrlAction } from "./import-url-actions";
 import type { Activity } from "@/lib/supabase/types";
 import { UrlImportPanel, type UrlImportApplyAction } from "@/components/UrlImportPanel";
+import { PosterClassifierPanel, type InterestLabel } from "@/components/PosterClassifierPanel";
+import type { PosterClassifierConfig } from "@/lib/poster/classifier";
 
 function toDateTimeLocalFromIso(iso: string): string {
   const date = new Date(iso);
@@ -23,12 +25,20 @@ export function ActivityForm({
   activityTypes,
   majors,
   initial,
+  posterConfig,
+  interests,
+  onFieldCandidateAccept,
 }: {
   mode: "create" | "edit";
   activityId?: string;
   activityTypes: { id: string; name: string }[];
   majors: { id: string; name: string; department: string }[];
   initial?: Activity;
+  /** 포스터 분류 설정(가이드 3.7). 없으면 패널이 기본값을 쓴다. */
+  posterConfig?: PosterClassifierConfig;
+  interests?: InterestLabel[];
+  /** "confirm" 모드(수정)에서 분야 후보 칩을 누르면 호출된다 — 수정 화면이 ActivityFieldsManager로 넘긴다. */
+  onFieldCandidateAccept?: (interestId: string) => void;
 }) {
   const [form, setForm] = useState<ActivityFormInput>({
     title: initial?.title ?? "",
@@ -114,6 +124,13 @@ export function ActivityForm({
         onApply={handleImportApply}
         enabledFields={["title", "orgName", "description", "eligibility", "sourceUrl", "date"]}
         duplicateLinkBase="/admin/activities"
+      />
+      <PosterClassifierPanel
+        variant={mode === "edit" ? "confirm" : "preview"}
+        activityId={activityId ?? null}
+        config={posterConfig}
+        interests={interests ?? []}
+        onAcceptCandidate={onFieldCandidateAccept}
       />
       <Field label="제목 *">
         <input value={form.title} onChange={(e) => set("title", e.target.value)} required className={inputClass} />
