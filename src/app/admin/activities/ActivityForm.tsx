@@ -21,11 +21,13 @@ export function ActivityForm({
   mode,
   activityId,
   activityTypes,
+  majors,
   initial,
 }: {
   mode: "create" | "edit";
   activityId?: string;
   activityTypes: { id: string; name: string }[];
+  majors: { id: string; name: string; department: string }[];
   initial?: Activity;
 }) {
   const [form, setForm] = useState<ActivityFormInput>({
@@ -49,6 +51,9 @@ export function ActivityForm({
     status: initial?.status ?? "draft",
     sourceUrlResolved: initial?.source_url_resolved ?? "",
     applyEndAtEvidence: initial?.apply_end_at_evidence ?? "",
+    weeklyHours: initial?.weekly_hours != null ? String(initial.weekly_hours) : "",
+    eligibilityScope: initial?.eligibility_scope ?? "unknown",
+    eligibleMajorIds: initial?.eligible_major_ids ?? [],
   });
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -160,9 +165,50 @@ export function ActivityForm({
           <input type="number" min={1} value={form.teamMaxSize} onChange={(e) => set("teamMaxSize", e.target.value)} className={inputClass} />
         </Field>
       </div>
-      <Field label="지원 자격">
+      <Field label="지원 자격 (원문 조건 문장)">
         <textarea value={form.eligibility} onChange={(e) => set("eligibility", e.target.value)} rows={2} className={inputClass} />
       </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="지원 자격 범위">
+          <select
+            value={form.eligibilityScope}
+            onChange={(e) => {
+              const scope = e.target.value as ActivityFormInput["eligibilityScope"];
+              setForm((prev) => ({ ...prev, eligibilityScope: scope, eligibleMajorIds: scope === "restricted" ? prev.eligibleMajorIds : [] }));
+            }}
+            className={inputClass}
+          >
+            <option value="unknown">확인 필요 (기본)</option>
+            <option value="any">전공 무관</option>
+            <option value="restricted">지정 전공만</option>
+          </select>
+        </Field>
+        <Field label="주당 예상 투입 시간 (원문에 있을 때만)">
+          <input
+            type="number"
+            min={0}
+            value={form.weeklyHours}
+            onChange={(e) => set("weeklyHours", e.target.value)}
+            className={inputClass}
+          />
+        </Field>
+      </div>
+      {form.eligibilityScope === "restricted" && (
+        <Field label="지정 전공 (복수 선택)">
+          <select
+            multiple
+            value={form.eligibleMajorIds}
+            onChange={(e) => set("eligibleMajorIds", Array.from(e.target.selectedOptions, (o) => o.value))}
+            className={`${inputClass} h-32`}
+          >
+            {majors.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name} ({m.department})
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
       <Field label="비용·혜택">
         <input value={form.benefit} onChange={(e) => set("benefit", e.target.value)} className={inputClass} />
       </Field>

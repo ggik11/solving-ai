@@ -58,6 +58,8 @@ export interface AvailabilitySlot {
   timezone: string;
 }
 
+export type EligibilityScope = "any" | "restricted" | "unknown";
+
 export interface Activity {
   id: string;
   title: string;
@@ -86,6 +88,12 @@ export interface Activity {
   needs_verification: boolean;
   verification_note: string | null;
   last_verification_attempt_at: string | null;
+  /** 주당 예상 투입 시간(원문에 있을 때만). G1에서 추가. */
+  weekly_hours: number | null;
+  /** 지원 자격 범위. 추천용 전공 관련성(major_field_weights)과는 별개(G2, 가이드 3.4/8.4). */
+  eligibility_scope: EligibilityScope;
+  eligible_major_ids: string[];
+  eligibility_verified_at: string | null;
   created_at: string;
   updated_at: string;
 }

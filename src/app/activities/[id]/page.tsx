@@ -5,7 +5,7 @@ import { PageContainer } from "@/components/PageContainer";
 import { EmptyState } from "@/components/states";
 import { Badge } from "@/components/Badge";
 import { BookmarkButton } from "@/components/BookmarkButton";
-import { loadRecommendationForActivity } from "@/lib/recommendations/query";
+import { loadRecommendationForActivity, loadActivityFieldsByActivity } from "@/lib/recommendations/query";
 import { formatKst, getApplyPhase, needsSourceVerification, APPLY_PHASE_LABEL } from "@/lib/format";
 import { PARTY_STATUS_LABEL, partyStatusBadgeVariant } from "@/lib/party";
 import { blockedCounterpartIds, filterPartiesExcludingBlocked, type BlockRow } from "@/lib/blocks";
@@ -22,6 +22,11 @@ interface ActivityPartyRow {
 
 const LOCATION_LABEL: Record<string, string> = { online: "온라인", offline: "오프라인", hybrid: "혼합" };
 const PARTICIPATION_LABEL: Record<string, string> = { solo: "개인 참여", team: "팀 참여", both: "개인·팀 모두 가능" };
+const ELIGIBILITY_SCOPE_LABEL: Record<string, string> = {
+  any: "전공 무관",
+  restricted: "지정 전공만 지원 가능",
+  unknown: "확인 필요 (원문 참고)",
+};
 
 export default async function ActivityDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -38,12 +43,13 @@ export default async function ActivityDetailPage({ params }: { params: Promise<{
   }
 
   const { data: tags } = await supabase.from("activity_tags").select("tag").eq("activity_id", id);
-  const tagNames = (tags ?? []).map((t) => t.tag);
+  const fieldsByActivity = await loadActivityFieldsByActivity(supabase, [id]);
+  const activityFields = fieldsByActivity.get(id) ?? [];
 
   const { data: userData } = await supabase.auth.getUser();
   const [recommendation, bookmarkRes, partiesRes, blocksRes] = userData.user
     ? await Promise.all([
-        loadRecommendationForActivity(supabase, userData.user.id, activity, tagNames),
+        loadRecommendationForActivity(supabase, userData.user.id, activity, activityFields),
         supabase
           .from("bookmarks")
           .select("activity_id")
@@ -110,7 +116,23 @@ export default async function ActivityDetailPage({ params }: { params: Promise<{
           />
         )}
         <Row label="지원 자격" value={activity.eligibility ?? "미정 (원문 확인 필요)"} />
+        <Row label="지원 자격 범위" value={ELIGIBILITY_SCOPE_LABEL[activity.eligibility_scope]} />
         <Row label="혜택" value={activity.benefit ?? "미정"} />
+      </section>
+
+      <section className="mb-4 flex flex-col gap-2">
+        <h2 className="text-sm font-semibold text-[var(--color-muted-foreground)]">분야</h2>
+        {activityFields.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {activityFields.map((f) => (
+              <Badge key={f.interestId} variant={f.role === "primary" ? "info" : "neutral"}>
+                {f.role === "primary" ? "대표" : "부가"} · {f.interestName}
+              </Badge>
+            ))}
+          </div>
+        ) : (
+          <Badge variant="neutral">분야 미확정</Badge>
+        )}
       </section>
 
       <section className="mb-4 flex flex-col gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm">
@@ -159,9 +181,16 @@ export default async function ActivityDetailPage({ params }: { params: Promise<{
         <h2 className="mb-2 text-sm font-semibold text-[var(--color-muted-foreground)]">추천 근거</h2>
         {!userData.user ? (
           <EmptyState title="로그인하면 맞춤 추천 근거를 볼 수 있어요" />
+        ) : recommendation?.eligibility === "restricted_excluded" ? (
+          <EmptyState
+            title="지정 전공 제한으로 맞춤 추천 대상이 아니에요"
+            description="이 활동은 지정 전공만 지원할 수 있어요. 복수전공·부전공 인정 여부는 원문을 확인해 주세요."
+          />
         ) : recommendation && !recommendation.isDiscovery && recommendation.reasons.length > 0 ? (
           <div className="flex flex-wrap items-center gap-1.5">
             <Badge variant="info">{Math.round(recommendation.score ?? 0)}점</Badge>
+            {recommendation.eligibility === "needs_check" && <Badge variant="warning">지원 자격 확인 필요</Badge>}
+            {recommendation.fieldsUnconfirmed && <Badge variant="neutral">분야 정보 부족</Badge>}
             {recommendation.reasons.map((reason) => (
               <Badge key={reason} variant="neutral">
                 {reason}

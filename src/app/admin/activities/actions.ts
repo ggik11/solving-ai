@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import type { ActivityStatus, LocationType, ParticipationMode } from "@/lib/supabase/types";
+import type { ActivityStatus, EligibilityScope, LocationType, ParticipationMode } from "@/lib/supabase/types";
 
 export interface ActivityFormInput {
   title: string;
@@ -27,6 +27,11 @@ export interface ActivityFormInput {
   /** URL 가져오기로 채운 경우의 출처 메타데이터(선택). 수동 입력일 때는 비워둔다. */
   sourceUrlResolved?: string;
   applyEndAtEvidence?: string;
+  /** 주당 예상 투입 시간(원문에 있을 때만). 비워두면 미상으로 추천 계산에서 제외된다. */
+  weeklyHours: string;
+  /** 지원 자격 범위 — 전공 관련성(추천)과는 별개. any/unknown은 eligibleMajorIds를 쓰지 않는다. */
+  eligibilityScope: EligibilityScope;
+  eligibleMajorIds: string[];
 }
 
 function toTimestamp(value: string): string | null {
@@ -58,6 +63,12 @@ function toRow(input: ActivityFormInput) {
     last_verified_at: new Date().toISOString(),
     source_url_resolved: input.sourceUrlResolved?.trim() || null,
     apply_end_at_evidence: input.applyEndAtEvidence?.trim() || null,
+    weekly_hours: input.weeklyHours ? Number(input.weeklyHours) : null,
+    eligibility_scope: input.eligibilityScope,
+    eligible_major_ids: input.eligibilityScope === "restricted" ? input.eligibleMajorIds : [],
+    // scope를 any/restricted로 명시한다는 것 자체가 원문을 보고 고른 것이므로 확인 시각을 남긴다.
+    // unknown으로 되돌리면(아직 확인 전) 확인 시각도 비운다.
+    eligibility_verified_at: input.eligibilityScope === "unknown" ? null : new Date().toISOString(),
   };
 }
 
@@ -67,6 +78,9 @@ export async function createActivity(input: ActivityFormInput): Promise<{ ok: bo
   if (!userData.user) return { ok: false, error: "로그인이 필요합니다." };
 
   if (!input.title.trim()) return { ok: false, error: "제목을 입력해 주세요." };
+  if (input.eligibilityScope === "restricted" && input.eligibleMajorIds.length === 0) {
+    return { ok: false, error: "지정 전공 제한이면 전공을 하나 이상 선택해 주세요." };
+  }
 
   const { error } = await supabase.from("activities").insert({ ...toRow(input), created_by: userData.user.id });
   if (error) return { ok: false, error: "활동 등록에 실패했습니다. 입력값을 확인하고 다시 시도해 주세요." };
@@ -79,6 +93,9 @@ export async function createActivity(input: ActivityFormInput): Promise<{ ok: bo
 export async function updateActivity(id: string, input: ActivityFormInput): Promise<{ ok: boolean; error?: string }> {
   const supabase = await createClient();
   if (!input.title.trim()) return { ok: false, error: "제목을 입력해 주세요." };
+  if (input.eligibilityScope === "restricted" && input.eligibleMajorIds.length === 0) {
+    return { ok: false, error: "지정 전공 제한이면 전공을 하나 이상 선택해 주세요." };
+  }
 
   const { error } = await supabase.from("activities").update(toRow(input)).eq("id", id);
   if (error) return { ok: false, error: "활동 수정에 실패했습니다. 입력값을 확인하고 다시 시도해 주세요." };
@@ -251,5 +268,49 @@ export async function deleteMatchTemplateAction(
 
   revalidatePath(`/admin/activities/${activityId}/edit`);
   revalidatePath(`/activities/${activityId}`);
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// 활동 분야 확정 (G2, activity_fields). activities/activity_tags처럼 테이블 RLS가
+// 운영자 전용이라 DB 함수 없이 직접 테이블을 쓴다. "전체 삭제 후 다시 삽입"으로 멱등하게 반영한다.
+// ---------------------------------------------------------------------------
+export async function setActivityFieldsAction(
+  activityId: string,
+  primaryInterestId: string | null,
+  secondaryInterestIds: string[]
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const supabase = await createClient();
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData.user) return { ok: false, error: "로그인이 필요합니다." };
+
+  const secondary = secondaryInterestIds.filter((id) => id !== primaryInterestId);
+  if (new Set(secondary).size !== secondary.length) {
+    return { ok: false, error: "같은 분야를 두 번 선택할 수 없어요." };
+  }
+
+  const { error: deleteError } = await supabase.from("activity_fields").delete().eq("activity_id", activityId);
+  if (deleteError) return { ok: false, error: "분야 확정에 실패했습니다. 잠시 후 다시 시도해 주세요." };
+
+  const rows = [
+    ...(primaryInterestId ? [{ interest_id: primaryInterestId, role: "primary" as const }] : []),
+    ...secondary.map((interestId) => ({ interest_id: interestId, role: "secondary" as const })),
+  ];
+  if (rows.length > 0) {
+    const { error: insertError } = await supabase.from("activity_fields").insert(
+      rows.map((r) => ({
+        activity_id: activityId,
+        interest_id: r.interest_id,
+        role: r.role,
+        source: "manual",
+        confirmed_by: userData.user!.id,
+      }))
+    );
+    if (insertError) return { ok: false, error: "분야 확정에 실패했습니다. 잠시 후 다시 시도해 주세요." };
+  }
+
+  revalidatePath(`/admin/activities/${activityId}/edit`);
+  revalidatePath(`/activities/${activityId}`);
+  revalidatePath("/");
   return { ok: true };
 }
