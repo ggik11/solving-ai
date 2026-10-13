@@ -47,3 +47,10 @@ supabase/.temp
 .claude-flow/data/
 .claude-flow/logs/
 .claude-flow/sessions/
+
+# 실험 도구 데이터셋(가이드 6.2, G4) — 저장소에는 datasets/manifest.csv 템플릿만 두고,
+# 실제 포스터 이미지(저작권·용량 문제로 커밋하지 않음)는 추적하지 않는다.
+/datasets/posters/
+
+# 추천 평가(가이드 6.4, G4) 스크립트가 만드는 결과 CSV — 매 실행마다 새 파일, 커밋 대상 아님.
+/eval-output/

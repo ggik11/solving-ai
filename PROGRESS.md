@@ -2,7 +2,7 @@
 
 ## 현재 상태 (2026-10-04 기준)
 
-- **완료:** 1단계(설계) + 설계 수정 3건, 2-A(뼈대+DB), 2-B(화면: 로그인/온보딩/활동 탐색·상세/관리자 CRUD·CSV 가져오기), 3단계(추천·북마크·파티), 3단계 보완(역할 슬롯/활동당 가입 규칙/파티 정보 수정), 4-A(팀 채팅 + 앱 내 알림), 4-B(빠른 매칭: 알고리즘·DB 함수·스케줄 워커·화면), 5단계 일부(매칭 로직 일치 검증 + 추가 시나리오 테스트), **5-A(차단·신고·관리자·계정 정지·활동 제보·회원 탈퇴) 전체 완료**, **5-B(최종 점검·문서 완성) 사실상 완료**(테스트 안정화·인수 조건 점검·보안 리뷰 겸 실제 취약점 수정·접근성/반응형·README/operations/data-sources 문서), **5-B 보안 마무리(EXECUTE 권한 전수 점검) 완료**, **6단계(링크 붙여넣기 활동 등록) 4/4 전체 완료** — 아래 "6단계: 링크 붙여넣기 활동 등록" 참조, **티처블 머신 연동 G1(공통 어휘와 전공) 완료**, **G2(추천 개편과 자격 분리) 완료**, **G3(티처블 머신 연동 골격, 모델 없이) 완료**, **G3 보완(저장 시 분석 결과·분야가 사라지던 문제) 완료** — 아래 "G1: 공통 어휘와 전공"·"G2: 추천 개편과 자격 분리"·"G3: 티처블 머신 연동 골격"·"G3 보완" 참조. `docs/teachable-machine-integration.md`(구현 기준, 원 설계는 `docs/tm-design-guidelines-original.md`) 9장 작업 단위(G1~G4)를 따른다.
+- **완료:** 1단계(설계) + 설계 수정 3건, 2-A(뼈대+DB), 2-B(화면: 로그인/온보딩/활동 탐색·상세/관리자 CRUD·CSV 가져오기), 3단계(추천·북마크·파티), 3단계 보완(역할 슬롯/활동당 가입 규칙/파티 정보 수정), 4-A(팀 채팅 + 앱 내 알림), 4-B(빠른 매칭: 알고리즘·DB 함수·스케줄 워커·화면), 5단계 일부(매칭 로직 일치 검증 + 추가 시나리오 테스트), **5-A(차단·신고·관리자·계정 정지·활동 제보·회원 탈퇴) 전체 완료**, **5-B(최종 점검·문서 완성) 사실상 완료**(테스트 안정화·인수 조건 점검·보안 리뷰 겸 실제 취약점 수정·접근성/반응형·README/operations/data-sources 문서), **5-B 보안 마무리(EXECUTE 권한 전수 점검) 완료**, **6단계(링크 붙여넣기 활동 등록) 4/4 전체 완료** — 아래 "6단계: 링크 붙여넣기 활동 등록" 참조, **티처블 머신 연동 G1(공통 어휘와 전공) 완료**, **G2(추천 개편과 자격 분리) 완료**, **G3(티처블 머신 연동 골격, 모델 없이) 완료**, **G3 보완(저장 시 분석 결과·분야가 사라지던 문제) 완료**, **G4(실험 도구) 완료** — 아래 "G1: 공통 어휘와 전공"·"G2: 추천 개편과 자격 분리"·"G3: 티처블 머신 연동 골격"·"G3 보완"·"G4: 실험 도구" 참조. 이것으로 9장 작업 단위(G1~G4)가 전부 완료됐다. `docs/teachable-machine-integration.md`(구현 기준, 원 설계는 `docs/tm-design-guidelines-original.md`) 9장 작업 단위(G1~G4)를 따른다.
 - **미착수(외부 설정 필요, 이 세션들이 손대지 못함):** `.env.example` 갱신 — 이 세션(들)의 파일 접근 권한이 `.env*` 경로를 전부 차단해(Read/Write/Bash/PowerShell 전부) 직접 수정할 수 없었다. 아래 "다음 명령" 절에 권장 내용을 그대로 적어뒀으니 사용자가 직접 반영해야 한다. 6단계에서 새로 필요해진 `CRON_SECRET`(정기 점검 엔드포인트 인증)도 같은 블록에 추가해 뒀다 — 운영 전환 전 외부 스케줄러(Vercel Cron 등) 등록도 함께 필요하다(README "활동 URL 가져오기 / 링크 정기 점검" 참조).
 - 실행 방법·테스트 계정·접속 주소는 `README.md` 참조. 설계 배경은 `docs/architecture.md` 참조.
 
@@ -935,3 +935,84 @@ G3에서 분야 확정을 수정 화면("confirm" 모드)으로만 좁혀 뒀는
     등 13건 전체)도 함께 재확인했다.
   - `npm test` **381/381 통과**(기존 360 + 신규 21), `npm run lint`/`npm run typecheck`/`npm run build`
     모두 성공, `npm run test:e2e` **13/13 통과**(신규 2건 포함).
+
+## G4: 실험 도구 (완료)
+
+`docs/teachable-machine-integration.md` 9장 G4 범위: 6장 전체(`/admin/model-lab`), `datasets/`
+템플릿과 `.gitignore`. 완료 기준: 지표 함수 단위 테스트, 목 예측으로 평가 화면 E2E 1건.
+
+- **지표 계산 (`src/lib/modelLab/metrics.ts`, 순수 함수):** `computeAccuracy`/`computeMajorityBaselineAccuracy`
+  (다수 클래스 기준선)/`computeConfusionMatrix`/`computeClassMetrics`(분야별 정밀도·재현율·F1)/
+  `computeMacroF1`/`computeThresholdSweep`(여러 임계값 조합의 통과율·통과 자료 정확도)/
+  `computeOodSuggestedRate`(범위 밖 이미지 중 suggested 비율)/`computeUnseenOrgAccuracy`(학습
+  자료에 없던 기관만 본 정확도) — 전부 `LabeledPrediction[]`만 받는 순수 함수라 실제 모델 없이도
+  목 예측값으로 검증한다. **설계 선택:** 이 함수들은 호출부가 넘긴 자료를 그대로 쓴다 — "test
+  split만 정확도에 쓴다" 같은 규칙은 함수 내부가 아니라 호출부(화면)의 책임이다(함수를 특정
+  split에 묶지 않아 재사용 폭을 넓힌다).
+- **manifest 검사 (`src/lib/modelLab/manifest.ts`):** `parseManifestCsv`(쌍따옴표 쉼표 지원하는
+  단순 CSV 파서, 필수 컬럼·split 값 검증) + `findCrossSplitLeaks`(같은 event_id·series_id가
+  여러 split에 섞였는지) + `computeClassBalance`(분야별 개수, ood 제외) + `findOrgConcentration`
+  (한 분야가 특정 기관에 70% 이상 몰렸는지, 기본 임계값 0.7) + `findInvalidLabels`(라벨이 모델
+  클래스 ID인지, `model_class_field_map`의 class_id와 비교).
+- **예측 결과 CSV (`src/lib/modelLab/predictionsCsv.ts`):** `id,true_label,predicted_label,top_score,margin,split,org_name`
+  양식을 `LabeledPrediction[]`으로 바꾼다. 모델 평가 화면의 두 입력 경로 중 하나(아래) — **목
+  예측값이 실제로 쓰이는 유일한 지점**이며, 실제 서비스 분석 코드(`src/lib/poster/analyze.ts`)
+  에는 전혀 연결되지 않는다.
+- **`/admin/model-lab` 화면 (관리자 전용, 브라우저에서만 실행 — 이미지가 서버로 나가지 않는다):**
+  - **6.1 학습 이미지 변환 (`ImagePreprocessSection.tsx`):** 여러 이미지를 선택하면 서비스와
+    완전히 같은 전처리 함수(`src/lib/poster/preprocess.ts`의 `computeSquarePlacement`/
+    `renderToSquareCanvas`, 체크리스트 9번)로 맞춰 `_pad-square-v1` 접미사를 붙인 PNG로 파일별
+    다운로드한다. **원 가이드와의 차이:** 가이드는 "폴더 쓰기 API를 지원하면 폴더로, 아니면
+    zip 다운로드"라고 하지만, 이 저장소에는 zip 라이브러리가 없었고(package.json 확인) 새
+    의존성을 추가하지 않기 위해 **파일별 개별 다운로드**로 대체했다 — 결과물(변환된 PNG 묶음)은
+    동일하고, 브라우저 File System Access API는 Chromium 계열에만 있어 범용성이 낮다고 판단했다.
+  - **6.2 데이터 목록 검사 (`ManifestCheckSection.tsx`):** manifest.csv를 올리면 분할 누수·분야별
+    개수·기관 편중·라벨 유효성을 바로 보여준다. 모델 클래스 연결표(`model_class_field_map`)가
+    아직 비어 있으면(실제 모델 전) 라벨 검사는 "건너뜀"으로 표시한다.
+  - **6.3 모델 평가 (`ModelEvaluationSection.tsx`):** 두 입력 경로를 토글로 지원한다. ①
+    "이미지 + manifest로 모델 실행" — `teachableMachineLoader`로 실제 모델을 불러와 각 이미지를
+    예측한다(모델이 없으면 전부 예측 실패로 남는다 — G3와 같은 원칙, 가짜 예측을 만들지 않음).
+    ② "예측 결과 CSV 업로드" — 이미 계산해 둔 예측값을 올려 지표 계산 파이프라인만 검증한다.
+    이 두 번째 경로를 추가한 이유: 모델이 아직 없는 지금(G4)도 평가 화면 자체(지표 계산·표시·
+    다운로드)를 실제로 검증할 수 있어야 하는데, 그러려면 목 예측값이 필요하고, 그 값을 실제
+    서비스 코드에 넣지 않으면서 쓸 수 있는 유일한 자리가 "이미 계산된 결과를 입력받는 화면"이다.
+    결과는 JSON·마크다운으로 다운로드할 수 있다(가이드 6.3) — 마크다운은 모델/전처리 버전·측정
+    시각을 포함해 `docs/model-evaluation.md`에 그대로 붙여 넣을 수 있는 모양이다. **실제 모델
+    평가 결과를 아직 기록하지 않았다** — 이 문서 파일은 실제 모델이 생기고 첫 평가를 돌린 뒤에
+    만든다(지금 미리 만들면 전부 빈 값인 문서가 된다).
+- **6.4 추천 평가 (`scripts/eval-recommend.ts`, `npm run eval:recommend`):** 실제 DB의 활동·
+  확정 분야·전공·관심분야 참조 데이터를 읽어, 15개의 합성 테스트 프로필(단과대학 8개·복수전공·
+  부전공·전공 미배정·관심분야만 입력·추천 모드 3종)을 메모리에서 구성하고 `rankActivities()`
+  (순수 함수)를 돌려 프로필별 상위 5개·점수·근거를 CSV로 출력한다. 전공 항목을 끈 버전
+  (`variant=no_major`)도 같은 CSV에 함께 쓴다(비교는 `variant` 컬럼으로). **설계 선택:** 테스트
+  프로필은 실제 Supabase 계정을 만들지 않는다 — `rankActivities()`가 순수 함수라 DB에 쓰지
+  않고도 평가할 수 있고, 매 실행마다 테스트 계정을 치웠다 다시 만드는 비용을 없앤다. 결과는
+  `eval-output/`(gitignore 대상)에 타임스탬프를 붙여 저장한다. 가이드 6.4의 "① 분야 미확정 ②
+  모델 후보 그대로 확정 ③ 관리자 정답 분야" 3단 비교는 서로 다른 `activity_fields` 상태 세
+  스냅샷이 있어야 하는 수작업 연구 절차라, 스크립트가 자동으로 만들지 않고 가이드 그대로 사람이
+  수행할 몫으로 남겨 둔다(현재 DB 상태 하나를 기준으로 결과를 내는 것은 스크립트가 한다). "사람이
+  적합 여부(1/0)를 채워 Precision@5·자격 위반 건수를 계산"하는 다음 단계도 사람이 CSV를 채운
+  뒤 하는 수작업이라 스크립트 범위에 넣지 않았다.
+- **`datasets/` 템플릿과 `.gitignore`:** `datasets/manifest.csv`(헤더 행만 있는 템플릿, 가이드
+  6.2 양식 그대로)를 커밋했다. `.gitignore`에 `/datasets/posters/`(실제 포스터 이미지, 저작권·
+  용량 문제로 추적하지 않음)와 `/eval-output/`(추천 평가 결과, 매 실행마다 새로 생김)을 추가했다.
+- **검증:**
+  - 단위 테스트(신규 4개 파일, 31건) — `tests/unit/model-lab-metrics.test.ts`(정확도·다수 클래스
+    기준선·혼동행렬·분야별 정밀도/재현율/F1·macro-F1·임계값 스윕·ood 수락률·처음 보는 기관
+    정확도, 전부 목 예측값), `tests/unit/model-lab-manifest.test.ts`(CSV 파싱, 쌍따옴표 쉼표
+    보존, 분할 누수·분야 불균형·기관 편중·라벨 유효성), `tests/unit/model-lab-predictions-csv.test.ts`
+    (예측 CSV 파싱, 예측 실패 행 처리), `tests/unit/model-lab-download.test.ts`(파일명 처리
+    순수 함수).
+  - E2E(`tests/e2e/model-lab-evaluation.spec.ts`, 신규 1건, 완료 기준 그대로) — 관리자가
+    `/admin/model-lab`에서 "예측 결과 CSV 업로드"로 목 예측 5건(정상 4건 + ood 1건)을 올리면
+    정확도(3/4, 75%)·macro-F1·ood 중 suggested 비율(1/1, 100%)·분야별 표가 실제로 계산되어
+    표시되고, JSON 다운로드가 실제로 동작하는지 확인했다. 목 예측은 이 CSV 업로드 경로에서만
+    쓰였고 실제 서비스 분석 코드는 건드리지 않았다.
+  - `npm run eval:recommend`를 로컬 DB에 실제로 돌려 15개 프로필 × 2개 변형 → 150행 CSV가
+    생성됨을 확인했다(실행 로그와 결과 파일을 직접 확인 — 점수가 전공 반영 여부에 따라 실제로
+    달라짐을 확인).
+  - `npm test` **412/412 통과**(기존 381 + 신규 31), `npm run lint`/`npm run typecheck`/`npm run build`
+    모두 성공, `npm run test:e2e` **14/14 통과**(신규 1건 포함).
+- **새 의존성:** `tsx`(devDependency) — `npm run eval:recommend`가 TypeScript 스크립트에서
+  `src/lib/recommend.ts`를 직접 import해 재사용하기 위해 추가했다(추천 로직을 스크립트용으로
+  중복 구현하지 않기 위한 선택). 서비스 런타임 코드에는 포함되지 않는다.

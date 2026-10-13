@@ -15,7 +15,8 @@
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
     "worker:match": "node scripts/run-match-worker.mjs",
-    "worker:link-check": "node scripts/run-link-check-worker.mjs"
+    "worker:link-check": "node scripts/run-link-check-worker.mjs",
+    "eval:recommend": "tsx scripts/eval-recommend.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
@@ -40,6 +41,7 @@
     "jsdom": "^30.1.1",
     "pg": "^8.23.1",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5",
     "vitest": "^5.0.3"
   }

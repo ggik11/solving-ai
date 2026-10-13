@@ -121,6 +121,12 @@ export default async function AdminHomePage() {
         >
           감사 로그
         </Link>
+        <Link
+          href="/admin/model-lab"
+          className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-sm font-medium"
+        >
+          실험 도구 (포스터 분류 모델 학습·평가)
+        </Link>
       </div>
     </PageContainer>
   );
