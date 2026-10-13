@@ -89,11 +89,15 @@ insert into public.majors (id, college, department, name, is_demo, is_active) va
   ('b0000000-0000-0000-0000-000000000005', '융합공과대학', '컴퓨터과학과', '소프트웨어공학 전공', true, false)
 on conflict do nothing;
 
+-- 2단계 데모 전공(b0000000-...)은 마이그레이션 20261013010000에서 is_active=false로 비활성화됐고
+-- major_field_weights 연결표는 서울캠퍼스 공식 전공(e0000000-...)에만 있다. 비활성 전공을 그대로
+-- 참조하면 major_field_weights 조인이 항상 빈 결과라 추천의 "전공" 항목이 영원히 0/근거 없음으로
+-- 나온다 — 데모 학생 4명을 공식 전공으로 바꿔 이어준다(관심분야·소개와 맞춰 선택).
 insert into public.profile_majors (profile_id, major_id) values
-  ('a0000000-0000-0000-0000-000000000002', 'b0000000-0000-0000-0000-000000000002'),
-  ('a0000000-0000-0000-0000-000000000003', 'b0000000-0000-0000-0000-000000000003'),
-  ('a0000000-0000-0000-0000-000000000004', 'b0000000-0000-0000-0000-000000000004'),
-  ('a0000000-0000-0000-0000-000000000005', 'b0000000-0000-0000-0000-000000000002')
+  ('a0000000-0000-0000-0000-000000000002', 'e0000000-0000-0000-0000-000000000011'), -- 기획러민지: 교육학과(EDUCATION_STUDIES, 교육·멘토링/복지 관심과 연결)
+  ('a0000000-0000-0000-0000-000000000003', 'e0000000-0000-0000-0000-000000000021'), -- 개발자준호: 컴퓨터과학전공(COMPUTER_SCIENCE, IT·AI·데이터 관심과 일치)
+  ('a0000000-0000-0000-0000-000000000004', 'e0000000-0000-0000-0000-000000000033'), -- 디자이너소은: 조형예술전공(PLASTIC_ART, 디자인 관심과 일치)
+  ('a0000000-0000-0000-0000-000000000005', 'e0000000-0000-0000-0000-000000000015')  -- 마케터하늘: 글로벌경영학과(GLOBAL_BUSINESS, 경영·마케팅·금융 관심과 일치)
 on conflict do nothing;
 
 -- 서비스 분야 12개는 마이그레이션(20261013010000)이 고정 UUID로 직접 등록한다 — 여기서는 다시 넣지 않는다.
@@ -200,6 +204,48 @@ select a.id, t.tag
 from public.activities a
 cross join lateral (values (split_part(a.title, ' ', 2))) as t(tag)
 where a.is_demo = true;
+
+-- 분야 확정(activity_fields, 가이드 3.2): G2부터 추천의 "관심분야"·"전공" 항목은 activity_tags가
+-- 아니라 activity_fields만 읽는다. 제목의 두 번째 단어(위 activity_tags와 같은 값)가 곧 생성 시
+-- 고른 서비스 분야 카테고리이므로 그대로 대표 분야로 확정한다. 운영 원칙(관리자가 등록한 실제
+-- 활동은 관리자가 직접 확정) 그대로, 여기서도 "관리자데모" 계정이 확정한 것으로 기록한다.
+-- 생성 순번(제목 끝의 "N기")이 7의 배수인 활동은 의도적으로 비워 둬 "분야 미확정" 배지가
+-- 실제로 보이게 한다(마이그레이션이 아니라 이 데모 시드에서만 하는 선택 — 실제 활동의 분야 확정은
+-- 관리자가 운영 화면에서 직접 한다).
+insert into public.activity_fields (activity_id, interest_id, role, source, confirmed_by, confirmed_at)
+select
+  a.id,
+  i.id,
+  'primary',
+  'manual',
+  'a0000000-0000-0000-0000-000000000001',
+  now()
+from public.activities a
+join public.interests i on i.name = split_part(a.title, ' ', 2)
+where a.is_demo = true
+  and mod((trim(trailing '기' from split_part(a.title, ' ', 4)))::int, 7) <> 0;
+
+-- 일부 카테고리는 실제로도 겹치는 부가 분야를 하나 더 둔다(예: IT 해커톤류는 전기·전자·제조·공학과도
+-- 겹침). 대표 분야가 미확정으로 남은 활동(위에서 제외됨)에는 부가 분야도 넣지 않는다.
+insert into public.activity_fields (activity_id, interest_id, role, source, confirmed_by, confirmed_at)
+select
+  a.id,
+  i2.id,
+  'secondary',
+  'manual',
+  'a0000000-0000-0000-0000-000000000001',
+  now()
+from public.activities a
+join public.interests i on i.name = split_part(a.title, ' ', 2)
+join public.interests i2 on i2.name = case i.name
+  when '에너지·소재·환경·도시' then '바이오·식품·영양·보건'
+  when 'IT·AI·데이터' then '전기·전자·제조·공학'
+  when '교육·멘토링' then '복지·지역사회·사회공헌'
+  when '디자인·영상·애니메이션·게임콘텐츠' then '미술·음악·공연·무용'
+  else null
+end
+where a.is_demo = true
+  and mod((trim(trailing '기' from split_part(a.title, ' ', 4)))::int, 7) <> 0;
 
 -- ===========================================================================
 -- 4. 수동 파티 데모: 모집중 파티 1개 + 확정된 파티 1개 (chat_rooms는 트리거가 자동 생성)
