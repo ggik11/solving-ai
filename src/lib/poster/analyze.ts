@@ -110,5 +110,36 @@ export function buildFailedAnalysisResult(args: {
   };
 }
 
+/**
+ * PosterAnalysisResult 중 DB 함수(create_activity_with_fields/submit_activity)가 받는 부분만.
+ * "preview" 모드(활동이 아직 없음)에서 PosterClassifierPanel의 onAnalyzed가 올리고, 상위 폼이
+ * 최종 저장 때까지 들고 있다가 그대로 전달한다(가이드 5.4 5번).
+ */
+export interface PendingPosterAnalysis {
+  posterHash: string;
+  modelVersion: string;
+  preprocessingVersion: string;
+  scores: ClassScore[];
+  topClass: string | null;
+  topScore: number | null;
+  margin: number | null;
+  status: PosterAnalysisStatus;
+  failureReason: PosterFailureReason | null;
+}
+
+export function toPendingPosterAnalysis(result: PosterAnalysisResult): PendingPosterAnalysis {
+  return {
+    posterHash: result.posterHash,
+    modelVersion: result.modelVersion,
+    preprocessingVersion: result.preprocessingVersion,
+    scores: result.scores,
+    topClass: result.topClass,
+    topScore: result.topScore,
+    margin: result.margin,
+    status: result.status,
+    failureReason: result.failureReason,
+  };
+}
+
 export { DEFAULT_POSTER_CLASSIFIER_CONFIG } from "./classifier";
 export type { PosterClassifierConfig };

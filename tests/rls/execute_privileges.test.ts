@@ -23,12 +23,14 @@ const ALLOWLIST: Record<string, readonly ("anon" | "authenticated")[]> = {
   "is_party_member(uuid)": ["anon", "authenticated"],
 
   "apply_to_party(uuid, uuid, text)": ["authenticated"],
-  "approve_activity_submission(uuid)": ["authenticated"],
+  "approve_activity_submission(uuid, uuid, uuid[], uuid[])": ["authenticated"],
   "approve_application(uuid)": ["authenticated"],
   "cancel_application(uuid)": ["authenticated"],
   "cancel_matching_queue(uuid)": ["authenticated"],
   "check_url_fetch_rate_limit()": ["authenticated"],
   "confirm_party(uuid)": ["authenticated"],
+  "create_activity_with_fields(text, text, text, text, text, text, text, uuid, text, text, integer, integer, text, timestamp with time zone, timestamp with time zone, timestamp with time zone, timestamp with time zone, text, text, text, numeric, text, uuid[], uuid, uuid[], uuid[], text, text, text, jsonb, text, numeric, numeric, text, text)":
+    ["authenticated"],
   "create_party(uuid, text, text, text, timestamp with time zone, jsonb, text)": ["authenticated"],
   "create_report(text, uuid, text, text)": ["authenticated"],
   "delegate_leader(uuid, uuid)": ["authenticated"],
@@ -48,7 +50,7 @@ const ALLOWLIST: Record<string, readonly ("anon" | "authenticated")[]> = {
   "reopen_party(uuid)": ["authenticated"],
   "respond_to_match_proposal(uuid, boolean)": ["authenticated"],
   "send_chat_message(uuid, text, text)": ["authenticated"],
-  "submit_activity(text, text, text, text, text, text, text, text, timestamp with time zone, timestamp with time zone, timestamp with time zone, timestamp with time zone, text, text)":
+  "submit_activity(text, text, text, text, text, text, text, text, timestamp with time zone, timestamp with time zone, timestamp with time zone, timestamp with time zone, text, text, uuid, uuid[], uuid[], text, text, text, jsonb, text, numeric, numeric, text, text)":
     ["authenticated"],
   "suspend_account(uuid, text)": ["authenticated"],
   "unsuspend_account(uuid)": ["authenticated"],

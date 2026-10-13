@@ -1,11 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { createActivity, updateActivity, type ActivityFormInput } from "./actions";
+import { createActivity, updateActivity, type ActivityFormInput, type FieldSelectionInput } from "./actions";
 import { previewActivityImportUrlAction } from "./import-url-actions";
 import type { Activity } from "@/lib/supabase/types";
 import { UrlImportPanel, type UrlImportApplyAction } from "@/components/UrlImportPanel";
 import { PosterClassifierPanel, type InterestLabel } from "@/components/PosterClassifierPanel";
+import { FieldPicker } from "@/components/FieldPicker";
+import { applyCandidateSelection, resolveSecondarySelection } from "@/lib/poster/fieldSelection";
+import { toPendingPosterAnalysis, type PosterAnalysisResult } from "@/lib/poster/analyze";
 import type { PosterClassifierConfig } from "@/lib/poster/classifier";
 
 function toDateTimeLocalFromIso(iso: string): string {
@@ -38,7 +41,7 @@ export function ActivityForm({
   posterConfig?: PosterClassifierConfig;
   interests?: InterestLabel[];
   /** "confirm" 모드(수정)에서 분야 후보 칩을 누르면 호출된다 — 수정 화면이 ActivityFieldsManager로 넘긴다. */
-  onFieldCandidateAccept?: (interestId: string) => void;
+  onFieldCandidateAccept?: (interestId: string, analysisId: string | null) => void;
 }) {
   const [form, setForm] = useState<ActivityFormInput>({
     title: initial?.title ?? "",
@@ -68,8 +71,33 @@ export function ActivityForm({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // "create" 모드 전용 — 활동이 아직 없어 PosterClassifierPanel이 바로 저장하지 못하는 분석
+  // 결과와 분야 선택을 들고 있다가, 저장 버튼을 누르는 순간 활동 생성과 한 번에 보낸다(가이드
+  // 5.4 5번) — 그래야 등록 화면에서 분석한 결과가 저장 시 사라지지 않는다.
+  const [primaryInterestId, setPrimaryInterestId] = useState("");
+  const [secondaryInterestIds, setSecondaryInterestIds] = useState<string[]>([]);
+  const [acceptedCandidateIds, setAcceptedCandidateIds] = useState<string[]>([]);
+  const [pendingAnalysis, setPendingAnalysis] = useState<PosterAnalysisResult | null>(null);
+
   function set<K extends keyof ActivityFormInput>(key: K, value: ActivityFormInput[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function handleAcceptCandidate(interestId: string) {
+    const next = applyCandidateSelection({ primary: primaryInterestId || null, secondary: secondaryInterestIds }, interestId);
+    setPrimaryInterestId(next.primary ?? "");
+    setSecondaryInterestIds(next.secondary);
+    setAcceptedCandidateIds((prev) => (prev.includes(interestId) ? prev : [...prev, interestId]));
+  }
+
+  function handlePrimaryChange(interestId: string) {
+    setAcceptedCandidateIds((prev) => prev.filter((id) => id !== primaryInterestId));
+    setPrimaryInterestId(interestId);
+  }
+
+  function handleToggleSecondary(interestId: string) {
+    setSecondaryInterestIds((prev) => (prev.includes(interestId) ? prev.filter((id) => id !== interestId) : [...prev, interestId]));
+    setAcceptedCandidateIds((prev) => prev.filter((id) => id !== interestId));
   }
 
   /** 접수 마감을 손으로 바꾸면 더 이상 "원문에서 확인된 값"이 아니므로 근거를 비운다. */
@@ -110,7 +138,19 @@ export function ActivityForm({
     e.preventDefault();
     setError(null);
     setSubmitting(true);
-    const result = mode === "create" ? await createActivity(form) : await updateActivity(activityId!, form);
+    let result;
+    if (mode === "create") {
+      const secondary = resolveSecondarySelection(primaryInterestId || null, secondaryInterestIds);
+      const fields: FieldSelectionInput = {
+        primaryInterestId: primaryInterestId || null,
+        secondaryInterestIds: secondary,
+        acceptedCandidateInterestIds: acceptedCandidateIds,
+        posterAnalysis: pendingAnalysis && !pendingAnalysis.fromCache ? toPendingPosterAnalysis(pendingAnalysis) : null,
+      };
+      result = await createActivity(form, fields);
+    } else {
+      result = await updateActivity(activityId!, form);
+    }
     setSubmitting(false);
     if (result && !result.ok) {
       setError(result.error ?? "저장에 실패했습니다.");
@@ -130,8 +170,22 @@ export function ActivityForm({
         activityId={activityId ?? null}
         config={posterConfig}
         interests={interests ?? []}
-        onAcceptCandidate={onFieldCandidateAccept}
+        onAcceptCandidate={mode === "edit" ? onFieldCandidateAccept : (interestId) => handleAcceptCandidate(interestId)}
+        onAnalyzed={mode === "create" ? setPendingAnalysis : undefined}
+        candidateHint={mode === "create" ? "후보를 누르면 바로 아래 분야 선택 칸에 들어가요 — 등록 버튼을 눌러야 확정돼요." : undefined}
       />
+      {mode === "create" && (
+        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+          <h3 className="mb-2 text-sm font-semibold text-[var(--color-muted-foreground)]">분야 선택</h3>
+          <FieldPicker
+            interests={interests ?? []}
+            primary={primaryInterestId}
+            onPrimaryChange={handlePrimaryChange}
+            secondary={secondaryInterestIds}
+            onToggleSecondary={handleToggleSecondary}
+          />
+        </div>
+      )}
       <Field label="제목 *">
         <input value={form.title} onChange={(e) => set("title", e.target.value)} required className={inputClass} />
       </Field>

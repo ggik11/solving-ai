@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { friendlyError } from "@/lib/errors";
+import type { PendingPosterAnalysis } from "@/lib/poster/analyze";
 import type { ActivityStatus, EligibilityScope, LocationType, ParticipationMode } from "@/lib/supabase/types";
 
 export interface ActivityFormInput {
@@ -72,7 +74,23 @@ function toRow(input: ActivityFormInput) {
   };
 }
 
-export async function createActivity(input: ActivityFormInput): Promise<{ ok: boolean; error?: string }> {
+export interface FieldSelectionInput {
+  primaryInterestId: string | null;
+  secondaryInterestIds: string[];
+  /** 모델 후보 칩을 눌러서 그대로 수락한 분야 id들(가이드 5.4 5번 — 수락률 통계용). */
+  acceptedCandidateInterestIds: string[];
+  /** 등록 화면에서 분석을 돌렸다면 그 원본값(없으면 null — 분석 없이 등록한 경우). */
+  posterAnalysis: PendingPosterAnalysis | null;
+}
+
+/**
+ * 활동 생성 + 분석 결과 저장 + 분야 확정을 한 트랜잭션(DB 함수)으로 처리한다 — 포스터를
+ * 저장하지 않아 등록 화면에서 분석한 결과가 저장 시 사라지던 문제를 고친다(가이드 5.4 5번).
+ */
+export async function createActivity(
+  input: ActivityFormInput,
+  fields: FieldSelectionInput
+): Promise<{ ok: boolean; error?: string }> {
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
   if (!userData.user) return { ok: false, error: "로그인이 필요합니다." };
@@ -82,8 +100,46 @@ export async function createActivity(input: ActivityFormInput): Promise<{ ok: bo
     return { ok: false, error: "지정 전공 제한이면 전공을 하나 이상 선택해 주세요." };
   }
 
-  const { error } = await supabase.from("activities").insert({ ...toRow(input), created_by: userData.user.id });
-  if (error) return { ok: false, error: "활동 등록에 실패했습니다. 입력값을 확인하고 다시 시도해 주세요." };
+  const row = toRow(input);
+  const analysis = fields.posterAnalysis;
+  const { data, error } = await supabase.rpc("create_activity_with_fields", {
+    p_title: row.title,
+    p_summary: row.summary,
+    p_description: row.description,
+    p_org_name: row.org_name,
+    p_source_url: row.source_url,
+    p_location_type: row.location_type,
+    p_region: row.region,
+    p_activity_type_id: row.activity_type_id,
+    p_eligibility: row.eligibility,
+    p_participation_mode: row.participation_mode,
+    p_team_min_size: row.team_min_size,
+    p_team_max_size: row.team_max_size,
+    p_benefit: row.benefit,
+    p_apply_start_at: row.apply_start_at,
+    p_apply_end_at: row.apply_end_at,
+    p_activity_start_at: row.activity_start_at,
+    p_activity_end_at: row.activity_end_at,
+    p_status: row.status,
+    p_source_url_resolved: row.source_url_resolved,
+    p_apply_end_at_evidence: row.apply_end_at_evidence,
+    p_weekly_hours: row.weekly_hours,
+    p_eligibility_scope: row.eligibility_scope,
+    p_eligible_major_ids: row.eligible_major_ids,
+    p_primary_interest_id: fields.primaryInterestId,
+    p_secondary_interest_ids: fields.secondaryInterestIds,
+    p_accepted_candidate_interest_ids: fields.acceptedCandidateInterestIds,
+    p_poster_hash: analysis?.posterHash ?? null,
+    p_model_version: analysis?.modelVersion ?? null,
+    p_preprocessing_version: analysis?.preprocessingVersion ?? null,
+    p_poster_scores: analysis?.scores ?? null,
+    p_poster_top_class: analysis?.topClass ?? null,
+    p_poster_top_score: analysis?.topScore ?? null,
+    p_poster_margin: analysis?.margin ?? null,
+    p_poster_status: analysis?.status ?? null,
+    p_poster_failure_reason: analysis?.failureReason ?? null,
+  });
+  if (error || !data) return { ok: false, error: friendlyError(error, "활동 등록에 실패했습니다. 입력값을 확인하고 다시 시도해 주세요.") };
 
   revalidatePath("/admin/activities");
   revalidatePath("/activities");
@@ -278,7 +334,10 @@ export async function deleteMatchTemplateAction(
 export async function setActivityFieldsAction(
   activityId: string,
   primaryInterestId: string | null,
-  secondaryInterestIds: string[]
+  secondaryInterestIds: string[],
+  /** interestId -> 그 분야를 확정으로 이끈 분석의 id. 모델 후보 칩을 그대로 눌러서 들어온
+   * 분야만 여기 있다 — 가이드 5.4 5번, 수락률 통계용(source='teachable_machine'). */
+  acceptedCandidates: Record<string, string | null> = {}
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
@@ -298,13 +357,18 @@ export async function setActivityFieldsAction(
   ];
   if (rows.length > 0) {
     const { error: insertError } = await supabase.from("activity_fields").insert(
-      rows.map((r) => ({
-        activity_id: activityId,
-        interest_id: r.interest_id,
-        role: r.role,
-        source: "manual",
-        confirmed_by: userData.user!.id,
-      }))
+      rows.map((r) => {
+        const analysisId = acceptedCandidates[r.interest_id] ?? null;
+        return {
+          activity_id: activityId,
+          interest_id: r.interest_id,
+          role: r.role,
+          source: analysisId ? "teachable_machine" : "manual",
+          analysis_id: analysisId,
+          confirmed_by: userData.user!.id,
+          accepted_model_candidate: analysisId ? true : null,
+        };
+      })
     );
     if (insertError) return { ok: false, error: "분야 확정에 실패했습니다. 잠시 후 다시 시도해 주세요." };
   }

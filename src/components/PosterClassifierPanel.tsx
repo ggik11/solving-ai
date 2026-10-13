@@ -21,10 +21,12 @@ type Stage = "idle" | "analyzing" | "done";
 
 /**
  * 포스터로 분야 후보를 찾는 패널(가이드 5.4). "confirm" 모드(수정 화면, activityId 있음)는 분석
- * 결과를 저장하고 제안(suggested) 후보를 클릭하면 분야 확정 칸(ActivityFieldsManager)에 들어간다.
- * "preview" 모드(등록/제보 단계, activityId 아직 없음)는 미리보기만 하고 저장하지 않는다 —
- * "관리자가 등록한 실제 활동은 관리자가 직접 확정한다"는 원칙에 따라 확정은 수정 화면 한 곳에서만
- * 한다(PROGRESS.md 참조). loader는 테스트에서만 목으로 주입한다 — 실제 서비스는 기본값을 쓴다.
+ * 결과를 즉시 저장한다. "preview" 모드(등록/제보 단계, activityId 아직 없음)는 활동이 아직
+ * 없어 바로 저장할 수 없으므로 분석 결과를 저장하지 않고 onAnalyzed로 원본값을 올린다 — 상위
+ * 폼(ActivityForm/SubmitActivityForm)이 그 값을 들고 있다가 최종 저장(활동 생성)과 같은 트랜잭션
+ * 으로 한 번에 보낸다(가이드 5.4 5번, PROGRESS.md 참조) — 그래서 저장 시 분석 결과가 사라지지
+ * 않는다. 두 모드 모두 분야 후보 칩을 누를 수 있고, 어느 쪽이든 "저장 전까지는 확정이 아니다".
+ * loader는 테스트에서만 목으로 주입한다 — 실제 서비스는 기본값을 쓴다.
  */
 export function PosterClassifierPanel({
   variant,
@@ -32,19 +34,30 @@ export function PosterClassifierPanel({
   config = DEFAULT_POSTER_CLASSIFIER_CONFIG,
   interests,
   onAcceptCandidate,
+  onAnalyzed,
   loader = teachableMachineLoader,
+  candidateHint,
 }: {
   variant: "confirm" | "preview";
   activityId: string | null;
   config?: PosterClassifierConfig;
   interests: InterestLabel[];
-  onAcceptCandidate?: (interestId: string) => void;
+  /** 분야 후보 칩을 누르면 호출된다. analysisId는 "confirm" 모드에서 이미 저장된 분석의 id이고,
+   * "preview" 모드(저장 전)에서는 null — 저장은 상위 폼이 onAnalyzed로 받은 원본 분석값을
+   * 한 번에 묶어 보낸다(가이드 5.4 5번). */
+  onAcceptCandidate?: (interestId: string, analysisId: string | null) => void;
+  /** 분석이 끝날 때마다(성공/실패 모두) 호출된다 — "preview" 모드는 이 값을 들고 있다가 최종
+   * 저장 시점에 활동 생성과 함께 한 번에 보낸다(활동이 아직 없어 바로 저장할 수 없기 때문). */
+  onAnalyzed?: (result: PosterAnalysisResult) => void;
   loader?: PosterModelLoader;
+  /** 분야 후보 칩을 누르면 어디에 반영되는지 안내하는 문구. 쓰는 화면마다 다르다(등록/제보/수정). */
+  candidateHint?: string;
 }) {
   const [stage, setStage] = useState<Stage>("idle");
   const [result, setResult] = useState<PosterAnalysisResult | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const modelRef = useRef<LoadedPosterModel | null>(null);
+  const persistedAnalysisIdRef = useRef<string | null>(null);
 
   const interestName = (id: string) => interests.find((i) => i.id === id)?.name ?? id;
 
@@ -56,6 +69,7 @@ export function PosterClassifierPanel({
     setStage("analyzing");
     setNotice(null);
     setResult(null);
+    persistedAnalysisIdRef.current = null;
 
     const posterHash = await hashFile(file);
     let analyzed: PosterAnalysisResult;
@@ -68,6 +82,7 @@ export function PosterClassifierPanel({
         analyzed = buildFailedAnalysisResult({ posterHash, modelVersion: "unknown", preprocessingVersion: PREPROCESS_VERSION, failureReason });
         await persistIfNeeded(analyzed);
         setResult(analyzed);
+        onAnalyzed?.(analyzed);
         setStage("done");
         return;
       }
@@ -88,6 +103,7 @@ export function PosterClassifierPanel({
       });
       await persistIfNeeded(analyzed);
       setResult(analyzed);
+      onAnalyzed?.(analyzed);
       setStage("done");
       return;
     }
@@ -106,14 +122,18 @@ export function PosterClassifierPanel({
 
     await persistIfNeeded(analyzed);
     setResult(analyzed);
+    onAnalyzed?.(analyzed);
     setStage("done");
   }
 
-  /** "confirm" 모드에서만 저장한다 — 분석 실패(모델 미설치 등)도 함께 남긴다(체크리스트 7번). */
+  /** "confirm" 모드에서만 즉시 저장한다 — 분석 실패(모델 미설치 등)도 함께 남긴다(체크리스트 7번).
+   * "preview" 모드(활동이 아직 없음)는 저장하지 않고 onAnalyzed로 올린 원본값을 상위 폼이 들고
+   * 있다가 활동 생성과 한 번에 묶어 보낸다 — 그래야 저장 시 분석 결과가 사라지지 않는다. */
   async function persistIfNeeded(analyzed: PosterAnalysisResult) {
     if (variant !== "confirm" || !activityId || analyzed.fromCache) return;
     const saved = await recordPosterAnalysisAction({ activityId, ...analyzed });
     if (!saved.ok) setNotice(saved.error);
+    else persistedAnalysisIdRef.current = saved.analysisId;
   }
 
   if (!config.enabled) {
@@ -128,7 +148,7 @@ export function PosterClassifierPanel({
     <section className="flex flex-col gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
       <h3 className="text-sm font-semibold text-[var(--color-muted-foreground)]">포스터로 분야 후보 찾기</h3>
       <p className="text-xs text-[var(--color-muted-foreground)]">
-        모델은 분야 &ldquo;후보&rdquo;만 제안해요. 실제 확정은 {variant === "confirm" ? "아래에서 직접" : "등록 후 수정 화면에서"} 해요.
+        모델은 분야 &ldquo;후보&rdquo;만 제안해요. {candidateHint ?? "후보를 누르면 아래 분야 선택 칸에 들어가요 — 저장 전까지는 확정이 아니에요."}
       </p>
       <label className="flex flex-col gap-1 text-sm font-medium">
         포스터 이미지 선택
@@ -175,9 +195,8 @@ export function PosterClassifierPanel({
                     <button
                       key={id}
                       type="button"
-                      disabled={variant !== "confirm"}
-                      onClick={() => onAcceptCandidate?.(id)}
-                      className="rounded-full border border-[var(--color-brand-300)] bg-[var(--color-brand-50)] px-3 py-1 text-xs text-[var(--color-brand-700)] disabled:opacity-70"
+                      onClick={() => onAcceptCandidate?.(id, persistedAnalysisIdRef.current)}
+                      className="rounded-full border border-[var(--color-brand-300)] bg-[var(--color-brand-50)] px-3 py-1 text-xs text-[var(--color-brand-700)]"
                     >
                       분야 후보 · {interestName(id)}
                     </button>

@@ -2,7 +2,7 @@
 
 ## 현재 상태 (2026-10-04 기준)
 
-- **완료:** 1단계(설계) + 설계 수정 3건, 2-A(뼈대+DB), 2-B(화면: 로그인/온보딩/활동 탐색·상세/관리자 CRUD·CSV 가져오기), 3단계(추천·북마크·파티), 3단계 보완(역할 슬롯/활동당 가입 규칙/파티 정보 수정), 4-A(팀 채팅 + 앱 내 알림), 4-B(빠른 매칭: 알고리즘·DB 함수·스케줄 워커·화면), 5단계 일부(매칭 로직 일치 검증 + 추가 시나리오 테스트), **5-A(차단·신고·관리자·계정 정지·활동 제보·회원 탈퇴) 전체 완료**, **5-B(최종 점검·문서 완성) 사실상 완료**(테스트 안정화·인수 조건 점검·보안 리뷰 겸 실제 취약점 수정·접근성/반응형·README/operations/data-sources 문서), **5-B 보안 마무리(EXECUTE 권한 전수 점검) 완료**, **6단계(링크 붙여넣기 활동 등록) 4/4 전체 완료** — 아래 "6단계: 링크 붙여넣기 활동 등록" 참조, **티처블 머신 연동 G1(공통 어휘와 전공) 완료**, **G2(추천 개편과 자격 분리) 완료**, **G3(티처블 머신 연동 골격, 모델 없이) 완료** — 아래 "G1: 공통 어휘와 전공"·"G2: 추천 개편과 자격 분리"·"G3: 티처블 머신 연동 골격" 참조. `docs/teachable-machine-integration.md`(구현 기준, 원 설계는 `docs/tm-design-guidelines-original.md`) 9장 작업 단위(G1~G4)를 따른다.
+- **완료:** 1단계(설계) + 설계 수정 3건, 2-A(뼈대+DB), 2-B(화면: 로그인/온보딩/활동 탐색·상세/관리자 CRUD·CSV 가져오기), 3단계(추천·북마크·파티), 3단계 보완(역할 슬롯/활동당 가입 규칙/파티 정보 수정), 4-A(팀 채팅 + 앱 내 알림), 4-B(빠른 매칭: 알고리즘·DB 함수·스케줄 워커·화면), 5단계 일부(매칭 로직 일치 검증 + 추가 시나리오 테스트), **5-A(차단·신고·관리자·계정 정지·활동 제보·회원 탈퇴) 전체 완료**, **5-B(최종 점검·문서 완성) 사실상 완료**(테스트 안정화·인수 조건 점검·보안 리뷰 겸 실제 취약점 수정·접근성/반응형·README/operations/data-sources 문서), **5-B 보안 마무리(EXECUTE 권한 전수 점검) 완료**, **6단계(링크 붙여넣기 활동 등록) 4/4 전체 완료** — 아래 "6단계: 링크 붙여넣기 활동 등록" 참조, **티처블 머신 연동 G1(공통 어휘와 전공) 완료**, **G2(추천 개편과 자격 분리) 완료**, **G3(티처블 머신 연동 골격, 모델 없이) 완료**, **G3 보완(저장 시 분석 결과·분야가 사라지던 문제) 완료** — 아래 "G1: 공통 어휘와 전공"·"G2: 추천 개편과 자격 분리"·"G3: 티처블 머신 연동 골격"·"G3 보완" 참조. `docs/teachable-machine-integration.md`(구현 기준, 원 설계는 `docs/tm-design-guidelines-original.md`) 9장 작업 단위(G1~G4)를 따른다.
 - **미착수(외부 설정 필요, 이 세션들이 손대지 못함):** `.env.example` 갱신 — 이 세션(들)의 파일 접근 권한이 `.env*` 경로를 전부 차단해(Read/Write/Bash/PowerShell 전부) 직접 수정할 수 없었다. 아래 "다음 명령" 절에 권장 내용을 그대로 적어뒀으니 사용자가 직접 반영해야 한다. 6단계에서 새로 필요해진 `CRON_SECRET`(정기 점검 엔드포인트 인증)도 같은 블록에 추가해 뒀다 — 운영 전환 전 외부 스케줄러(Vercel Cron 등) 등록도 함께 필요하다(README "활동 URL 가져오기 / 링크 정기 점검" 참조).
 - 실행 방법·테스트 계정·접속 주소는 `README.md` 참조. 설계 배경은 `docs/architecture.md` 참조.
 
@@ -829,3 +829,109 @@ G2를 "완료"로 표시했지만, `npm run db:reset` 직후 student1~4로 홈 "
   - RLS 테스트(`tests/rls/poster_classifier.test.ts`, 신규 14건) — 활동 소유자·운영자만 분석 기록 가능(남의 활동은 거부), 실패 상태·사유 정합성 CHECK, 활동 등록 전(activity_id=null) 분석은 본인 것만 재사용되고 활동 단위로 캐시가 스코프됨(다른 활동엔 재사용 안 됨), `poster_analyses` 테이블 직접 insert 거부(함수로만), 본인 외 분석 결과 비공개, `activity_fields.analysis_id`가 분석 삭제 후 null로 남고 확정값은 유지됨, `model_class_field_map` 공개 읽기·운영자 전용 쓰기, `app_settings.poster_classifier` 존재·임계값 범위·일반 사용자 수정 거부. `tests/rls/execute_privileges.test.ts`에 새 함수 2개를 허용 목록에 추가.
   - E2E(`tests/e2e/poster-classifier-model-missing.spec.ts`, 신규) — **가짜 모델을 만드는 대신, 이 저장소에 실제로 모델 파일이 없는 상태를 그대로 검증했다.** 관리자가 수정 화면에서 포스터 이미지를 선택하면 분석이 `failed(model_missing)`로 끝나고 "분야를 직접 선택해 주세요" 안내가 뜨는지, 그 아래 분야 확정(`ActivityFieldsManager`)과 활동 수정 저장이 실패와 무관하게 정상 동작하는지(체크리스트 6번), 분석 이력에 "실패"가 점수 조작 없이 그대로 남는지(체크리스트 7번) 확인했다.
   - `npm test` **360/360 통과**(기존 325 + 신규 35), `npm run lint`/`npm run typecheck`/`npm run build` 모두 성공, `npm run test:e2e` **11/11 통과**(신규 1건 포함).
+
+## G3 보완: 저장 시 분석 결과·분야가 사라지던 문제 (완료)
+
+G3에서 분야 확정을 수정 화면("confirm" 모드)으로만 좁혀 뒀는데, 그 전제(활동이 이미 존재해야
+확정할 수 있다)가 실제로는 두 가지 사용자 불편으로 이어졌다 — 관리자 등록 화면은 포스터를
+저장하지 않으니 등록 중에 분석한 결과가 저장(활동 생성) 시 그대로 사라져 관리자가 수정 화면에서
+포스터를 다시 골라 재분석해야 했고, 사용자 제보 화면의 분석도 마찬가지로 사라져 관리자가 승인
+때 다시 분석해야 했다. 가이드 5.4의 5번("저장 시 분석 결과와 확정 분야를 함께 기록하고, 모델
+후보를 그대로 수락했는지도 남긴다")을 그대로 따라 고쳤다.
+
+- **마이그레이션 (`20261013050000_atomic_field_confirmation.sql`):**
+  - `activity_fields.accepted_model_candidate`(boolean, nullable) 신규 — 그 분야가 모델 후보를
+    그대로 수락해 확정됐는지. `source='teachable_machine'`일 때만 true/false 의미가 있고,
+    `source='manual'`이면 항상 null이다. G3 당시 `setActivityFieldsAction`은 항상
+    `source: "manual"`로 저장해 모델 수락 여부를 전혀 기록하지 않았다는 사실이 이번에 드러났다
+    — 수정 화면도 함께 고쳤다(아래).
+  - `activity_field_proposals`(신규 테이블) — 제보자의 분야 "제안"(확정 아님). `activity_fields`와
+    모양은 같지만(activity_id/interest_id/role/source/analysis_id), 쓰기 주체가 다르다: RLS는
+    조회만 두고(운영자 전체, 제보자 본인) insert/update/delete 정책을 아예 두지 않아 **쓰기는
+    `submit_activity()` 함수로만** 하게 했다(`poster_analyses`와 같은 패턴). 이 저장소는 제보도
+    `activities`의 draft 행을 그대로 쓰므로(5-A/G3 설계 그대로), 원 가이드의 "submission_id"는
+    여기서는 `activity_id`와 같은 값이다 — 승인 시 "분석 결과를 생성된 activity_id에 연결"하는
+    작업이 따로 필요 없다(제보 시점부터 이미 그 activity_id로 연결돼 있다).
+  - `create_activity_with_fields(...)`(신규, 35개 파라미터) — 활동 생성 + `poster_analyses` 저장
+    (activity_id 연결) + `activity_fields` 확정을 **한 트랜잭션(하나의 SECURITY DEFINER 함수
+    호출)**으로 처리한다. 클라이언트가 "모델 후보 칩을 눌러서 그대로 수락한 분야 id 목록"을
+    그대로 넘기면, 그 목록에 포함된 분야만 `source='teachable_machine'` +
+    `accepted_model_candidate=true`로 기록하고 나머지 수동 선택은 `source='manual'` + null로
+    기록한다. 운영자 전용(`is_admin()` 아니면 `NOT_ADMIN`), 지정 전공 제한인데 전공이 비어 있으면
+    `ELIGIBLE_MAJORS_REQUIRED`로 거부.
+  - `submit_activity(...)` 확장(14개 → 26개 파라미터, 끝에 선택 파라미터 추가) — 분석 결과 +
+    제안 분야를 같은 호출에서 함께 저장한다. 제안 분야는 `activity_fields`가 아니라
+    `activity_field_proposals`에 들어간다 — 제보자는 "제안"만 할 수 있다.
+  - `approve_activity_submission(...)` 확장(1개 → 4개 파라미터) — 승인 시 **관리자가 고른 분야**를
+    `activity_fields`에 확정한다(제보자의 제안을 그대로 복사하지 않음 — 관리자가 같은 값을
+    고르면 결과적으로 같아질 뿐이다). `analysis_id`는 그 활동에 연결된 가장 최근
+    `poster_analyses` 행을 함수 내부에서 직접 찾는다(승인 화면이 따로 넘기지 않아도 됨).
+  - PostgreSQL 함수 신원(identity)은 "이름+파라미터 타입 목록" 전체라서, 파라미터 개수가
+    달라지면 `create or replace`가 기존 함수를 대체하지 않고 **오버로드로 추가**해 버린다(옛
+    시그니처가 anon/authenticated 권한을 그대로 쥔 채 남음 — `20261004090000`의 교훈 그대로).
+    `submit_activity`/`approve_activity_submission`은 바뀐 시그니처라 옛 함수를 먼저 명시적으로
+    `drop function`한 뒤 새로 만들었다. `tests/rls/execute_privileges.test.ts`의 허용 목록을
+    세 함수 모두 새 시그니처로 갱신했다.
+- **등록 화면 (`ActivityForm.tsx`, "create" 모드):** `PosterClassifierPanel`의 분야 후보 칩을
+  이제 "preview" 모드에서도 누를 수 있게 했다(G3 당시는 "confirm" 모드에서만 가능했다). 칩을
+  누르면 활동이 아직 없어 바로 저장할 수 없으므로, 패널의 새 `onAnalyzed` 콜백이 분석 원본값을
+  올리고 폼이 들고 있다가(`pendingAnalysis`), 등록 버튼을 누르는 순간 `createActivity()`가
+  `create_activity_with_fields` RPC로 활동 생성과 함께 한 번에 보낸다. "분야 선택" 섹션(새
+  `FieldPicker` 공용 컴포넌트)을 등록 폼에 추가해, 모델 유무와 무관하게 수동 선택도 등록 시점에
+  바로 확정할 수 있게 했다.
+- **제보 화면 (`SubmitActivityForm.tsx`):** 같은 패턴으로 "분야 제안 (참고용)" 섹션을 추가했다 —
+  여기서 고른 값은 "제안"일 뿐이라고 명시하고, `submitActivityAction`이 분석값+제안 분야를
+  `submit_activity` RPC에 함께 보낸다.
+- **수정 화면 (`ActivityFieldsManager.tsx`):** G3의 숨은 버그(모델 수락 여부를 전혀 기록하지
+  않던 것)를 고쳤다 — 분야 후보 칩을 누른 분야와 그 분석 id를 `acceptedMap`(interestId ->
+  analysisId)으로 추적하고, "분야 저장" 시 `setActivityFieldsAction`에 함께 넘겨 수락한
+  분야만 `source='teachable_machine'` + `accepted_model_candidate=true`로 기록한다. 대표를
+  수동으로 바꾸거나 부가를 끄면 그 id는 수락 목록에서 빠진다(더 이상 "그대로 수락"이 아니므로).
+  대표/부가 선택 UI는 등록 화면과 같은 `FieldPicker` 컴포넌트로 통일했다(JSX 중복 제거).
+- **승인 화면 (`/admin/submissions`):** 제보 목록에 그 활동의 가장 최근 포스터 분석(모델 버전·
+  판정·1위 분야·점수, 연결표로 해석한 후보 분야명)과 제보자의 제안 분야를 함께 보여준다.
+  `FieldPicker`가 제보자의 제안으로 기본값이 채워져 있고, 관리자가 그대로 두거나 바꿔서
+  "승인(공개)"을 누르면 그 값이 확정된다 — 제보자의 제안이 아니라 관리자가 최종 승인 시점에
+  고른 값이 저장된다. 제안 중 제보자가 모델 후보를 그대로 눌렀던 분야(`source='teachable_machine'`)
+  는 관리자가 바꾸지 않고 그대로 승인하면 수락률 통계에도 반영된다.
+- **관리자 대시보드 (`/admin`):** 가이드 5.6에서 G3가 "분석 데이터가 사실상 없어 전부 0으로
+  나오는 화면이 된다"며 의도적으로 미뤄 둔 항목 — 이제 분석 기록이 쌓이므로 추가했다. 판정
+  비율(suggested/needs_review/failed 건수·비율)과 분야별 모델 후보 수락률을 보여주고, 분석
+  기록이 전혀 없으면 "아직 분석 기록 없음"을 표시한다. 집계 로직은 `src/lib/poster/stats.ts`의
+  순수 함수(`computeVerdictRatios`/`computeFieldAcceptanceRates`)로 분리해 실제 모델 없이도
+  단위 테스트했다. `/admin/activities`의 "분야 미확정"/"모델 후보 대기" 필터는 G3에서 이미
+  구현돼 있었다(가이드 5.6 앞부분) — 이번에는 그대로 두고 손대지 않았다.
+- **작업 중 발견하고 고친 버그 (내 변경과 무관한 기존 결함):** `/admin/activities/[id]/edit`가
+  `activity_fields`를 불러올 때 `.select("interest_id, role")`로 DB 컬럼명 그대로 선택하면서
+  `ActivityFieldSummary` 타입은 camelCase(`interestId`)로 선언돼 있었다 — `.returns<T>()`는
+  타입 단언일 뿐 런타임 변환이 아니므로, `initialFields.find(...)?.interestId`가 항상
+  `undefined`가 되어 **이미 확정된 분야가 있어도 수정 화면의 "대표 분야" select가 늘 빈 값으로
+  보이던 결함**이었다(G2 때부터 있었던 것으로 보이며, 이 항목을 실제로 재오픈해 확인하는 테스트가
+  이번이 처음이라 들키지 않았다). `select("interestId:interest_id, role")`로 PostgREST 별칭을
+  줘 고쳤다 — 등록 화면의 원자적 저장 E2E가 "저장 후 재분석 없이 수정 화면에 분야가 보인다"를
+  검증하다가 실제로 이 결함에 걸려서 드러났다.
+- **검증:**
+  - 단위 테스트(신규 2개 파일, 11건) — `tests/unit/poster-field-selection.test.ts`(후보 칩 클릭에
+    따른 대표/부가 반영 규칙, 저장 직전 중복·대표 중복 제거), `tests/unit/poster-stats.test.ts`
+    (판정 비율 계산, 분야별 수락률 계산 — 한 클래스가 여러 분야 후보로 연결된 경우, 분석 id가
+    다르면 수락으로 세지 않는 경우 포함).
+  - RLS 테스트(`tests/rls/atomic_field_confirmation.test.ts`, 신규 8건) — `create_activity_with_fields`
+    원자적 저장(분석+분야 함께 기록, 모델 후보 그대로 수락 시 `accepted_model_candidate=true`),
+    분석 없이 등록해도 정상 동작, 일반 사용자 호출 거부, 지정 전공 제한 검증. `submit_activity`가
+    분석+제안을 함께 저장하고 **확정(activity_fields)은 생기지 않음**, 제보자 본인만 자신의
+    제안을 조회(다른 사용자는 조회 불가, 운영자는 전체 조회), `activity_field_proposals` 직접
+    insert 거부(함수로만). `approve_activity_submission`이 승인 시 관리자가 고른 분야를 확정하고
+    분석이 이미 연결된 activity_id 그대로 남음, **제보자(일반 사용자)가 승인 함수를 호출하면
+    `NOT_ADMIN`으로 거부됨**(요청한 가드).
+  - E2E 2건 신규 — `tests/e2e/poster-field-confirmation-atomic.spec.ts`("등록 화면에서 분야를
+    선택해 저장 → 재분석 없이 수정 화면에 분야가 이미 확정돼 있음 → 활동 상세에도 반영"),
+    `tests/e2e/activity-submission-field-approval.spec.ts`("제보자가 분야를 제안 → 관리자가
+    승인 화면에서 제안과 다른 분야로 바꿔 확정 → 공개된 활동 상세에 관리자가 고른 값이 보이고
+    제보자의 제안은 보이지 않음"). 이 저장소에는 아직 실제 모델 파일이 없으므로(가이드 9장 G3),
+    두 E2E 모두 모델 후보 칩 클릭이 아니라 **수동 분야 선택** 경로로 "저장 시 사라지지 않음"을
+    검증했다 — 모델 수락 경로(`accepted_model_candidate`, "모델 후보를 그대로 수락" 분기)는
+    실제 서비스 코드에 가짜 모델/예측값을 넣지 않기 위해 DB 레벨(`atomic_field_confirmation.test.ts`)
+    에서 검증했다. 기존 E2E(`poster-classifier-model-missing.spec.ts`, `activity-fields-recommendation.spec.ts`
+    등 13건 전체)도 함께 재확인했다.
+  - `npm test` **381/381 통과**(기존 360 + 신규 21), `npm run lint`/`npm run typecheck`/`npm run build`
+    모두 성공, `npm run test:e2e` **13/13 통과**(신규 2건 포함).

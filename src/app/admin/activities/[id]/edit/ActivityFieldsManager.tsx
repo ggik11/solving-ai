@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { setActivityFieldsAction } from "../../actions";
+import { FieldPicker } from "@/components/FieldPicker";
+import { applyCandidateSelection, resolveSecondarySelection } from "@/lib/poster/fieldSelection";
 
 export interface InterestOption {
   id: string;
@@ -14,11 +16,13 @@ export interface ActivityFieldSummary {
 }
 
 /**
- * 관리자 수동 분야 확정 화면(G2, 가이드 3.2). 모델 후보 제안은 G3에서 이 위에 얹는다 —
- * 지금은 "대표 1개 + 부가 여러 개"를 사람이 직접 고르는 것만 지원한다.
+ * 관리자 수동 분야 확정 화면(G2, 가이드 3.2) + 모델 후보 수락(G3, 가이드 5.4 5번).
+ * "대표 1개 + 부가 여러 개"를 사람이 직접 고르거나, 모델 후보 칩을 그대로 수락할 수 있다.
  */
 export interface PendingFieldCandidate {
   interestId: string;
+  /** 이 후보를 제안한 분석의 id — 저장 시 activity_fields.analysis_id/accepted_model_candidate에 쓴다. */
+  analysisId: string | null;
   /** 같은 분야를 연달아 클릭해도 useEffect가 다시 반응하도록 클릭마다 바뀌는 값(예: Date.now()). */
   nonce: number;
 }
@@ -40,6 +44,8 @@ export function ActivityFieldsManager({
 
   const [primary, setPrimary] = useState(initialPrimary);
   const [secondary, setSecondary] = useState<string[]>(initialSecondary);
+  // interestId -> 그 분야를 확정으로 이끈 분석 id. 모델 후보를 그대로 눌러서 들어온 분야만 있다.
+  const [acceptedMap, setAcceptedMap] = useState<Record<string, string | null>>({});
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -50,23 +56,38 @@ export function ActivityFieldsManager({
   if (pendingCandidate && pendingCandidate.nonce !== appliedNonce) {
     setAppliedNonce(pendingCandidate.nonce);
     setSaved(false);
-    if (!primary) {
-      setPrimary(pendingCandidate.interestId);
-    } else if (primary !== pendingCandidate.interestId && !secondary.includes(pendingCandidate.interestId)) {
-      setSecondary([...secondary, pendingCandidate.interestId]);
-    }
+    const next = applyCandidateSelection({ primary: primary || null, secondary }, pendingCandidate.interestId);
+    setPrimary(next.primary ?? "");
+    setSecondary(next.secondary);
+    setAcceptedMap((prev) => ({ ...prev, [pendingCandidate.interestId]: pendingCandidate.analysisId }));
+  }
+
+  function handlePrimaryChange(id: string) {
+    setSaved(false);
+    setAcceptedMap((prev) => {
+      const next = { ...prev };
+      delete next[primary];
+      return next;
+    });
+    setPrimary(id);
   }
 
   function toggleSecondary(id: string) {
     setSaved(false);
     setSecondary((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    setAcceptedMap((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
-    const result = await setActivityFieldsAction(activityId, primary || null, secondary);
+    const resolvedSecondary = resolveSecondarySelection(primary || null, secondary);
+    const result = await setActivityFieldsAction(activityId, primary || null, resolvedSecondary, acceptedMap);
     setSubmitting(false);
     if (!result.ok) {
       setError(result.error);
@@ -83,50 +104,13 @@ export function ActivityFieldsManager({
       </p>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-        <label className="flex flex-col gap-1 text-sm font-medium">
-          대표 분야
-          <select
-            value={primary}
-            onChange={(e) => {
-              setSaved(false);
-              setPrimary(e.target.value);
-            }}
-            className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
-          >
-            <option value="">선택 안 함</option>
-            {interests.map((i) => (
-              <option key={i.id} value={i.id}>
-                {i.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <div>
-          <p className="mb-1 text-sm font-medium">부가 분야 (복수 선택)</p>
-          <div className="flex flex-wrap gap-2">
-            {interests
-              .filter((i) => i.id !== primary)
-              .map((i) => {
-                const selected = secondary.includes(i.id);
-                return (
-                  <button
-                    key={i.id}
-                    type="button"
-                    aria-pressed={selected}
-                    onClick={() => toggleSecondary(i.id)}
-                    className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
-                      selected
-                        ? "border-[var(--color-brand-600)] bg-[var(--color-brand-600)] text-white"
-                        : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--foreground)]"
-                    }`}
-                  >
-                    {i.name}
-                  </button>
-                );
-              })}
-          </div>
-        </div>
+        <FieldPicker
+          interests={interests}
+          primary={primary}
+          onPrimaryChange={handlePrimaryChange}
+          secondary={secondary}
+          onToggleSecondary={toggleSecondary}
+        />
 
         {error && (
           <p role="alert" className="text-sm text-[var(--color-danger)]">

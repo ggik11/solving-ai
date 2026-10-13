@@ -5,6 +5,9 @@ import { submitActivityAction } from "./actions";
 import { previewActivitySubmissionUrlAction } from "./import-url-actions";
 import { UrlImportPanel, type UrlImportApplyAction } from "@/components/UrlImportPanel";
 import { PosterClassifierPanel, type InterestLabel } from "@/components/PosterClassifierPanel";
+import { FieldPicker } from "@/components/FieldPicker";
+import { applyCandidateSelection, resolveSecondarySelection } from "@/lib/poster/fieldSelection";
+import { toPendingPosterAnalysis, type PosterAnalysisResult } from "@/lib/poster/analyze";
 import type { PosterClassifierConfig } from "@/lib/poster/classifier";
 
 function toDateTimeLocalFromIso(iso: string): string {
@@ -35,6 +38,29 @@ export function SubmitActivityForm({
   const [applyEndAtEvidence, setApplyEndAtEvidence] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // 제보자는 분야를 "제안"만 할 수 있다 — 관리자가 승인 화면에서 확정한다(가이드 5.4 5번).
+  const [primaryInterestId, setPrimaryInterestId] = useState("");
+  const [secondaryInterestIds, setSecondaryInterestIds] = useState<string[]>([]);
+  const [acceptedCandidateIds, setAcceptedCandidateIds] = useState<string[]>([]);
+  const [pendingAnalysis, setPendingAnalysis] = useState<PosterAnalysisResult | null>(null);
+
+  function handleAcceptCandidate(interestId: string) {
+    const next = applyCandidateSelection({ primary: primaryInterestId || null, secondary: secondaryInterestIds }, interestId);
+    setPrimaryInterestId(next.primary ?? "");
+    setSecondaryInterestIds(next.secondary);
+    setAcceptedCandidateIds((prev) => (prev.includes(interestId) ? prev : [...prev, interestId]));
+  }
+
+  function handlePrimaryChange(interestId: string) {
+    setAcceptedCandidateIds((prev) => prev.filter((id) => id !== primaryInterestId));
+    setPrimaryInterestId(interestId);
+  }
+
+  function handleToggleSecondary(interestId: string) {
+    setSecondaryInterestIds((prev) => (prev.includes(interestId) ? prev.filter((id) => id !== interestId) : [...prev, interestId]));
+    setAcceptedCandidateIds((prev) => prev.filter((id) => id !== interestId));
+  }
 
   function handleApplyEndAtInputChange(value: string) {
     setApplyEndAt(value);
@@ -77,9 +103,14 @@ export function SubmitActivityForm({
     }
     setError(null);
     setSubmitting(true);
+    const secondary = resolveSecondarySelection(primaryInterestId || null, secondaryInterestIds);
     const result = await submitActivityAction({
       title, summary, description, orgName, sourceUrl, locationType, region, participationMode,
       applyStartAt, applyEndAt, sourceUrlResolved, applyEndAtEvidence,
+      primaryInterestId: primaryInterestId || null,
+      secondaryInterestIds: secondary,
+      acceptedCandidateInterestIds: acceptedCandidateIds,
+      posterAnalysis: pendingAnalysis && !pendingAnalysis.fromCache ? toPendingPosterAnalysis(pendingAnalysis) : null,
     });
     setSubmitting(false);
     if (!result.ok) setError(result.error);
@@ -92,7 +123,30 @@ export function SubmitActivityForm({
         onApply={handleImportApply}
         enabledFields={["title", "orgName", "description", "sourceUrl", "date"]}
       />
-      <PosterClassifierPanel variant="preview" activityId={null} config={posterConfig} interests={interests} />
+      <PosterClassifierPanel
+        variant="preview"
+        activityId={null}
+        config={posterConfig}
+        interests={interests}
+        onAcceptCandidate={handleAcceptCandidate}
+        onAnalyzed={setPendingAnalysis}
+        candidateHint="후보를 누르면 바로 아래 분야 제안 칸에 들어가요 — 확정은 관리자가 검토하며 직접 해요."
+      />
+      <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+        <h3 className="mb-2 text-sm font-semibold text-[var(--color-muted-foreground)]">분야 제안 (참고용)</h3>
+        <p className="mb-2 text-xs text-[var(--color-muted-foreground)]">
+          여기서 고른 분야는 &ldquo;제안&rdquo;일 뿐이에요 — 관리자가 승인하며 직접 분야를 확정해요.
+        </p>
+        <FieldPicker
+          interests={interests}
+          primary={primaryInterestId}
+          onPrimaryChange={handlePrimaryChange}
+          secondary={secondaryInterestIds}
+          onToggleSecondary={handleToggleSecondary}
+          primaryLabel="대표 분야 제안"
+          secondaryLabel="부가 분야 제안 (복수 선택)"
+        />
+      </div>
       {error && (
         <p role="alert" className="rounded-md bg-[var(--color-danger-bg)] px-3 py-2 text-sm text-[var(--color-danger)]">
           {error}

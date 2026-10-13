@@ -41,7 +41,7 @@ export function EditActivityClient({
         initial={activity}
         posterConfig={posterConfig}
         interests={interests}
-        onFieldCandidateAccept={(interestId) => setPendingCandidate({ interestId, nonce: Date.now() })}
+        onFieldCandidateAccept={(interestId, analysisId) => setPendingCandidate({ interestId, analysisId, nonce: Date.now() })}
       />
 
       <div className="mt-6">

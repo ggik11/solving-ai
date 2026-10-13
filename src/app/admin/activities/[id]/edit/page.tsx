@@ -38,7 +38,12 @@ export default async function EditActivityPage({ params }: { params: Promise<{ i
       .eq("activity_id", id)
       .order("created_at", { ascending: true })
       .returns<TemplateRow[]>(),
-    supabase.from("activity_fields").select("interest_id, role").eq("activity_id", id).returns<ActivityFieldSummary[]>(),
+    // 기존(pre-existing) 버그 수정: interestId:interest_id로 별칭을 줘야 한다 — ActivityFieldSummary는
+    // camelCase인데 PostgREST는 select한 컬럼명을 그대로 돌려준다(.returns<T>()는 타입 단언일 뿐
+    // 런타임 변환이 아니다). 별칭 없이는 initialFields.find(...)?.interestId가 항상 undefined가
+    // 되어, 이미 확정된 분야가 있어도 수정 화면 "분야 확정" select가 늘 빈 값으로 보였다 — 이번
+    // 작업(가이드 5.4 5번) E2E로 처음 드러났다.
+    supabase.from("activity_fields").select("interestId:interest_id, role").eq("activity_id", id).returns<ActivityFieldSummary[]>(),
     supabase
       .from("poster_analyses")
       .select("id, model_version, status, top_class, top_score, failure_reason, created_at")
