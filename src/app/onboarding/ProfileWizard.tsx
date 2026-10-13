@@ -1,8 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { saveProfile, type ProfileFormInput, type ReferenceData, type CurrentProfileData } from "./actions";
+import {
+  saveProfile,
+  type MajorKind,
+  type MajorSelectionInput,
+  type MajorStatus,
+  type ProfileFormInput,
+  type ReferenceData,
+  type CurrentProfileData,
+} from "./actions";
 
 const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
 const ACADEMIC_STATUS_OPTIONS: { value: ProfileFormInput["academicStatus"]; label: string }[] = [
@@ -20,6 +28,21 @@ const VISIBILITY_OPTIONS: { value: ProfileFormInput["profileVisibility"]; label:
   { value: "public", label: "전체 공개", hint: "로그인하지 않은 방문자에게도 보여요" },
   { value: "members_only", label: "회원에게만 공개", hint: "로그인한 사용자에게만 보여요 (기본값)" },
   { value: "private", label: "비공개", hint: "나만 볼 수 있어요" },
+];
+const MAJOR_STATUS_OPTIONS: { value: MajorStatus; label: string }[] = [
+  { value: "assigned", label: "전공이 있어요" },
+  { value: "exploring", label: "아직 탐색 중이에요" },
+  { value: "unlisted", label: "목록에 없는 전공이에요" },
+  { value: "not_provided", label: "입력하지 않을래요" },
+];
+const MAJOR_KIND_OPTIONS: { value: MajorKind; label: string }[] = [
+  { value: "double", label: "복수전공" },
+  { value: "minor", label: "부전공" },
+];
+const RECOMMENDATION_MODE_OPTIONS: { value: ProfileFormInput["recommendationMode"]; label: string; hint: string }[] = [
+  { value: "balanced", label: "균형", hint: "관심분야·전공을 비슷한 비중으로 반영해요 (기본값)" },
+  { value: "major_focus", label: "전공 중심", hint: "전공과 관련된 활동을 더 많이 보여줘요" },
+  { value: "interest_expand", label: "관심 확장", hint: "전공과 상관없이 관심분야 위주로 넓게 보여줘요" },
 ];
 
 function toggle(list: string[], id: string): string[] {
@@ -76,12 +99,15 @@ export function ProfileWizard({ mode, reference, initial }: Props) {
 
   const [nickname, setNickname] = useState(initial.nickname);
   const [campus, setCampus] = useState<ProfileFormInput["campus"]>(initial.campus);
-  const [majorIds, setMajorIds] = useState<string[]>(initial.majorIds);
+  const [majorStatus, setMajorStatus] = useState<MajorStatus>(initial.majorStatus ?? "not_provided");
+  const [majorSelections, setMajorSelections] = useState<MajorSelectionInput[]>(initial.majorSelections);
+  const [collegeFilter, setCollegeFilter] = useState<string>("전체");
   const [grade, setGrade] = useState<number | null>(initial.grade);
   const [academicStatus, setAcademicStatus] = useState<ProfileFormInput["academicStatus"]>(
     (initial.academicStatus as ProfileFormInput["academicStatus"]) ?? "enrolled"
   );
   const [interestIds, setInterestIds] = useState<string[]>(initial.interestIds);
+  const [interestPriorityEnabled, setInterestPriorityEnabled] = useState(initial.interestPriorityEnabled);
   const [preferredActivityTypeIds, setPreferredActivityTypeIds] = useState<string[]>(
     initial.preferredActivityTypeIds
   );
@@ -92,6 +118,9 @@ export function ProfileWizard({ mode, reference, initial }: Props) {
   const [preferredRegion, setPreferredRegion] = useState(initial.preferredRegion ?? "");
   const [weeklyAvailableHours, setWeeklyAvailableHours] = useState<string>(
     initial.weeklyAvailableHours != null ? String(initial.weeklyAvailableHours) : ""
+  );
+  const [recommendationMode, setRecommendationMode] = useState<ProfileFormInput["recommendationMode"]>(
+    initial.recommendationMode ?? "balanced"
   );
   const [availability, setAvailability] = useState(
     initial.availability.length > 0 ? initial.availability : []
@@ -105,6 +134,12 @@ export function ProfileWizard({ mode, reference, initial }: Props) {
   const [matchingOptIn, setMatchingOptIn] = useState(initial.matchingOptIn);
   const [notificationsEnabled, setNotificationsEnabled] = useState(initial.notificationsEnabled);
 
+  const colleges = useMemo(() => Array.from(new Set(reference.majors.map((m) => m.college))), [reference.majors]);
+  const filteredMajors = useMemo(
+    () => (collegeFilter === "전체" ? reference.majors : reference.majors.filter((m) => m.college === collegeFilter)),
+    [reference.majors, collegeFilter]
+  );
+
   function addAvailabilitySlot() {
     setAvailability((prev) => [...prev, { day_of_week: 1, start_time: "09:00", end_time: "12:00" }]);
   }
@@ -115,19 +150,58 @@ export function ProfileWizard({ mode, reference, initial }: Props) {
     setAvailability((prev) => prev.filter((_, i) => i !== index));
   }
 
+  function toggleMajor(majorId: string) {
+    setMajorSelections((prev) => {
+      if (prev.some((m) => m.majorId === majorId)) {
+        return prev.filter((m) => m.majorId !== majorId);
+      }
+      const kind: MajorKind = prev.some((m) => m.kind === "primary") ? "double" : "primary";
+      return [...prev, { majorId, kind, useForRecommendation: true }];
+    });
+  }
+  function setMajorKind(majorId: string, kind: MajorKind) {
+    setMajorSelections((prev) =>
+      prev.map((m) => {
+        if (m.majorId === majorId) return { ...m, kind };
+        // 주전공은 하나만 — 다른 전공을 주전공으로 바꾸면 기존 주전공은 복수전공으로 내려간다.
+        if (kind === "primary" && m.kind === "primary") return { ...m, kind: "double" };
+        return m;
+      })
+    );
+  }
+  function setMajorUseForRecommendation(majorId: string, value: boolean) {
+    setMajorSelections((prev) => prev.map((m) => (m.majorId === majorId ? { ...m, useForRecommendation: value } : m)));
+  }
+
+  function toggleInterest(interestId: string) {
+    setInterestIds((prev) => (prev.includes(interestId) ? prev.filter((id) => id !== interestId) : [...prev, interestId]));
+  }
+  function moveInterestPriority(index: number, direction: -1 | 1) {
+    setInterestIds((prev) => {
+      const next = [...prev];
+      const target = index + direction;
+      if (target < 0 || target >= next.length) return prev;
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
+
   function buildInput(completeOnboarding: boolean): ProfileFormInput {
     return {
       nickname,
       campus,
-      majorIds,
+      majorStatus,
+      majorSelections,
       grade,
       academicStatus,
       interestIds,
+      interestPriorityEnabled,
       preferredActivityTypeIds,
       skillIds,
       preferredLocationType,
       preferredRegion: preferredRegion.trim() || null,
       weeklyAvailableHours: weeklyAvailableHours.trim() ? Number(weeklyAvailableHours) : null,
+      recommendationMode,
       availability,
       bio: bio.trim() || null,
       portfolioUrl: portfolioUrl.trim() || null,
@@ -234,13 +308,95 @@ export function ProfileWizard({ mode, reference, initial }: Props) {
             </div>
           </div>
           <div>
-            <p className="mb-1 text-sm font-medium">전공 (선택, 복수 가능 · 목록에 없으면 비워두세요)</p>
+            <p className="mb-1 text-sm font-medium">전공 상태</p>
+            <div className="flex flex-wrap gap-2">
+              {MAJOR_STATUS_OPTIONS.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  aria-pressed={majorStatus === o.value}
+                  onClick={() => setMajorStatus(o.value)}
+                  className={`rounded-full border px-3 py-1.5 text-sm ${
+                    majorStatus === o.value
+                      ? "border-[var(--color-brand-600)] bg-[var(--color-brand-600)] text-white"
+                      : "border-[var(--color-border)]"
+                  }`}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="mb-1 flex items-center justify-between">
+              <p className="text-sm font-medium">전공 (상명대 서울캠퍼스, 복수 가능)</p>
+              <select
+                value={collegeFilter}
+                onChange={(e) => setCollegeFilter(e.target.value)}
+                className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs"
+              >
+                <option value="전체">전체 단과대학</option>
+                {colleges.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
             <MultiSelect
-              options={reference.majors.map((m) => ({ id: m.id, label: `${m.name} (${m.department})` }))}
-              selected={majorIds}
-              onChange={setMajorIds}
+              options={filteredMajors.map((m) => ({ id: m.id, label: `${m.name} (${m.department})` }))}
+              selected={majorSelections.map((m) => m.majorId)}
+              onChange={(nextIds) => {
+                const added = nextIds.find((id) => !majorSelections.some((m) => m.majorId === id));
+                const removed = majorSelections.find((m) => !nextIds.includes(m.majorId));
+                if (added) toggleMajor(added);
+                if (removed) toggleMajor(removed.majorId);
+              }}
             />
           </div>
+          {majorSelections.length > 0 && (
+            <div className="flex flex-col gap-2 rounded-md border border-[var(--color-border)] p-3">
+              <p className="text-xs font-medium text-[var(--color-muted-foreground)]">선택한 전공</p>
+              {majorSelections.map((m) => {
+                const major = reference.majors.find((x) => x.id === m.majorId);
+                return (
+                  <div key={m.majorId} className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="min-w-0 flex-1">{major ? `${major.name} (${major.department})` : m.majorId}</span>
+                    <label className="flex items-center gap-1">
+                      <input
+                        type="radio"
+                        name="primary-major"
+                        checked={m.kind === "primary"}
+                        onChange={() => setMajorKind(m.majorId, "primary")}
+                      />
+                      주전공
+                    </label>
+                    {m.kind !== "primary" && (
+                      <select
+                        value={m.kind}
+                        onChange={(e) => setMajorKind(m.majorId, e.target.value as MajorKind)}
+                        className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs"
+                      >
+                        {MAJOR_KIND_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    <label className="flex items-center gap-1 text-xs text-[var(--color-muted-foreground)]">
+                      <input
+                        type="checkbox"
+                        checked={m.useForRecommendation}
+                        onChange={(e) => setMajorUseForRecommendation(m.majorId, e.target.checked)}
+                      />
+                      추천에 반영
+                    </label>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       ),
       required: false,
@@ -248,11 +404,61 @@ export function ProfileWizard({ mode, reference, initial }: Props) {
     {
       title: "관심분야",
       content: (
-        <MultiSelect
-          options={reference.interests.map((i) => ({ id: i.id, label: i.name }))}
-          selected={interestIds}
-          onChange={setInterestIds}
-        />
+        <div className="flex flex-col gap-3">
+          <MultiSelect
+            options={reference.interests.map((i) => ({ id: i.id, label: i.name }))}
+            selected={interestIds}
+            onChange={(next) => {
+              const added = next.find((id) => !interestIds.includes(id));
+              const removed = interestIds.find((id) => !next.includes(id));
+              if (added) toggleInterest(added);
+              if (removed) toggleInterest(removed);
+            }}
+          />
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={interestPriorityEnabled}
+              onChange={(e) => setInterestPriorityEnabled(e.target.checked)}
+            />
+            우선순위를 매길래요 (끄면 선택한 관심분야를 모두 균등하게 반영해요)
+          </label>
+          {interestPriorityEnabled && interestIds.length > 1 && (
+            <div className="flex flex-col gap-1 rounded-md border border-[var(--color-border)] p-2">
+              <p className="text-xs text-[var(--color-muted-foreground)]">위일수록 더 관심 있는 분야예요.</p>
+              {interestIds.map((id, index) => {
+                const interest = reference.interests.find((i) => i.id === id);
+                return (
+                  <div key={id} className="flex items-center justify-between gap-2 text-sm">
+                    <span>
+                      {index + 1}. {interest?.name ?? id}
+                    </span>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        aria-label="우선순위 올리기"
+                        disabled={index === 0}
+                        onClick={() => moveInterestPriority(index, -1)}
+                        className="rounded border border-[var(--color-border)] px-2 text-xs disabled:opacity-30"
+                      >
+                        ▲
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="우선순위 내리기"
+                        disabled={index === interestIds.length - 1}
+                        onClick={() => moveInterestPriority(index, 1)}
+                        className="rounded border border-[var(--color-border)] px-2 text-xs disabled:opacity-30"
+                      >
+                        ▼
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       ),
       required: false,
     },
@@ -326,6 +532,24 @@ export function ProfileWizard({ mode, reference, initial }: Props) {
               onChange={(e) => setWeeklyAvailableHours(e.target.value)}
               className="w-28 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
             />
+          </div>
+          <div>
+            <p className="mb-1 text-sm font-medium">추천 모드</p>
+            <div className="flex flex-col gap-2">
+              {RECOMMENDATION_MODE_OPTIONS.map((o) => (
+                <label key={o.value} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="recommendation-mode"
+                    checked={recommendationMode === o.value}
+                    onChange={() => setRecommendationMode(o.value)}
+                  />
+                  <span>
+                    {o.label} <span className="text-[var(--color-muted-foreground)]">— {o.hint}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
           </div>
         </div>
       ),

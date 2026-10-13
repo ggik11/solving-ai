@@ -44,19 +44,23 @@ update public.profiles set nickname = '운영자데모', account_status = 'activ
   where id = 'a0000000-0000-0000-0000-000000000001';
 update public.profiles set nickname = '기획러민지', campus_verified = true, grade = 2, academic_status = 'enrolled',
     bio = '기획/운영 역할을 선호합니다.', preferred_location_type = 'hybrid', preferred_region = '서울',
-    weekly_available_hours = 6, experience = '교내 홍보 서포터즈 1년 활동', onboarding_completed_at = now()
+    weekly_available_hours = 6, experience = '교내 홍보 서포터즈 1년 활동', onboarding_completed_at = now(),
+    major_status = 'assigned'
   where id = 'a0000000-0000-0000-0000-000000000002';
 update public.profiles set nickname = '개발자준호', campus_verified = true, grade = 3, academic_status = 'enrolled',
     bio = '프론트엔드 개발에 관심 있습니다.', preferred_location_type = 'online', preferred_region = null,
-    weekly_available_hours = 10, experience = '교내 해커톤 2회 참가', onboarding_completed_at = now()
+    weekly_available_hours = 10, experience = '교내 해커톤 2회 참가', onboarding_completed_at = now(),
+    major_status = 'assigned'
   where id = 'a0000000-0000-0000-0000-000000000003';
 update public.profiles set nickname = '디자이너소은', campus_verified = false, grade = 1, academic_status = 'enrolled',
     bio = '포트폴리오용 디자인 활동을 찾습니다.', preferred_location_type = 'offline', preferred_region = '서울',
-    weekly_available_hours = 4, onboarding_completed_at = now()
+    weekly_available_hours = 4, onboarding_completed_at = now(),
+    major_status = 'assigned'
   where id = 'a0000000-0000-0000-0000-000000000004';
 update public.profiles set nickname = '마케터하늘', campus_verified = true, grade = 4, academic_status = 'leave_of_absence',
     bio = '주말에만 참여 가능합니다.', preferred_location_type = 'hybrid', preferred_region = '서울/온라인',
-    weekly_available_hours = 3, onboarding_completed_at = now()
+    weekly_available_hours = 3, onboarding_completed_at = now(),
+    major_status = 'assigned'
   where id = 'a0000000-0000-0000-0000-000000000005';
 
 insert into public.user_roles (profile_id, role) values ('a0000000-0000-0000-0000-000000000001', 'admin')
@@ -73,14 +77,16 @@ insert into public.availability_slots (profile_id, day_of_week, start_time, end_
   ('a0000000-0000-0000-0000-000000000005', 0, '09:00', '18:00'); -- 일요일 종일
 
 -- ===========================================================================
--- 2. 참조 데이터: majors(데모 표시), interests, skills
+-- 2. 참조 데이터: majors(데모 표시, 비활성), interests(서비스 분야 12개), skills
 -- ===========================================================================
-insert into public.majors (id, college, department, name, is_demo) values
-  ('b0000000-0000-0000-0000-000000000001', '인문사회과학대학', '국어교육과', '국어교육학 전공', true),
-  ('b0000000-0000-0000-0000-000000000002', '경영경제대학', '경영학부', '경영학 전공', true),
-  ('b0000000-0000-0000-0000-000000000003', '융합공과대학', '컴퓨터과학과', '컴퓨터과학 전공', true),
-  ('b0000000-0000-0000-0000-000000000004', '문화예술대학', '디자인학부', '시각디자인 전공', true),
-  ('b0000000-0000-0000-0000-000000000005', '융합공과대학', '컴퓨터과학과', '소프트웨어공학 전공', true)
+-- 2단계부터 있던 데모 전공 5개. 서울캠퍼스 공식 목록(마이그레이션 20261013010000)이 들어온 뒤로는
+-- is_active=false로 비활성화하되, 이미 배정된 데모 프로필 참조가 깨지지 않도록 지우지 않는다.
+insert into public.majors (id, college, department, name, is_demo, is_active) values
+  ('b0000000-0000-0000-0000-000000000001', '인문사회과학대학', '국어교육과', '국어교육학 전공', true, false),
+  ('b0000000-0000-0000-0000-000000000002', '경영경제대학', '경영학부', '경영학 전공', true, false),
+  ('b0000000-0000-0000-0000-000000000003', '융합공과대학', '컴퓨터과학과', '컴퓨터과학 전공', true, false),
+  ('b0000000-0000-0000-0000-000000000004', '문화예술대학', '디자인학부', '시각디자인 전공', true, false),
+  ('b0000000-0000-0000-0000-000000000005', '융합공과대학', '컴퓨터과학과', '소프트웨어공학 전공', true, false)
 on conflict do nothing;
 
 insert into public.profile_majors (profile_id, major_id) values
@@ -90,14 +96,7 @@ insert into public.profile_majors (profile_id, major_id) values
   ('a0000000-0000-0000-0000-000000000005', 'b0000000-0000-0000-0000-000000000002')
 on conflict do nothing;
 
-insert into public.interests (id, name) values
-  ('c0000000-0000-0000-0000-000000000001', '환경'),
-  ('c0000000-0000-0000-0000-000000000002', 'IT/테크'),
-  ('c0000000-0000-0000-0000-000000000003', '교육'),
-  ('c0000000-0000-0000-0000-000000000004', '마케팅'),
-  ('c0000000-0000-0000-0000-000000000005', '디자인'),
-  ('c0000000-0000-0000-0000-000000000006', '사회공헌')
-on conflict do nothing;
+-- 서비스 분야 12개는 마이그레이션(20261013010000)이 고정 UUID로 직접 등록한다 — 여기서는 다시 넣지 않는다.
 
 -- 지시서 4장 "할 수 있는 역할" 어휘를 그대로 쓴다.
 insert into public.skills (id, name) values
@@ -146,7 +145,7 @@ on conflict do nothing;
 with gen as (
   select
     i,
-    (array['환경','IT/테크','교육','마케팅','디자인','사회공헌'])[1 + (i % 6)] as category,
+    (array['에너지·소재·환경·도시','IT·AI·데이터','교육·멘토링','경영·마케팅·금융','디자인·영상·애니메이션·게임콘텐츠','복지·지역사회·사회공헌'])[1 + (i % 6)] as category,
     (array['공모전','서포터즈','봉사','해커톤','창업','교육·캠프'])[1 + (i % 6)] as kind,
     (array['online','offline','hybrid'])[1 + (i % 3)] as location_type,
     (array['solo','team','both'])[1 + (i % 3)] as participation_mode,

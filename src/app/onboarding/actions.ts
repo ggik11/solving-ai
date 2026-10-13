@@ -9,18 +9,31 @@ export interface AvailabilityInput {
   end_time: string;
 }
 
+export type MajorKind = "primary" | "double" | "minor";
+export type MajorStatus = "assigned" | "exploring" | "unlisted" | "not_provided";
+export type RecommendationMode = "balanced" | "major_focus" | "interest_expand";
+
+export interface MajorSelectionInput {
+  majorId: string;
+  kind: MajorKind;
+  useForRecommendation: boolean;
+}
+
 export interface ProfileFormInput {
   nickname: string;
   campus: "서울" | "천안";
-  majorIds: string[];
+  majorStatus: MajorStatus;
+  majorSelections: MajorSelectionInput[];
   grade: number | null;
   academicStatus: "enrolled" | "leave_of_absence" | "graduated_pending" | "other";
-  interestIds: string[];
+  interestIds: string[]; // 배열 순서 = 우선순위(1부터). interestPriorityEnabled가 false면 저장 시 모두 null(균등)로 처리.
+  interestPriorityEnabled: boolean;
   preferredActivityTypeIds: string[];
   skillIds: string[];
   preferredLocationType: "online" | "offline" | "hybrid" | null;
   preferredRegion: string | null;
   weeklyAvailableHours: number | null;
+  recommendationMode: RecommendationMode;
   availability: AvailabilityInput[];
   bio: string | null;
   portfolioUrl: string | null;
@@ -46,6 +59,11 @@ export async function saveProfile(input: ProfileFormInput): Promise<SaveProfileR
     return { ok: false, error: "닉네임은 2~20자로 입력해 주세요." };
   }
 
+  // 주전공(primary)은 사용자당 최대 1개(DB 부분 유니크 인덱스와 동일한 규칙) — 저장 전에 먼저 확인한다.
+  if (input.majorSelections.filter((m) => m.kind === "primary").length > 1) {
+    return { ok: false, error: "주전공은 하나만 선택할 수 있습니다." };
+  }
+
   const { error: profileError } = await supabase
     .from("profiles")
     .update({
@@ -53,9 +71,11 @@ export async function saveProfile(input: ProfileFormInput): Promise<SaveProfileR
       campus: input.campus,
       grade: input.grade,
       academic_status: input.academicStatus,
+      major_status: input.majorStatus,
       preferred_location_type: input.preferredLocationType,
       preferred_region: input.preferredRegion,
       weekly_available_hours: input.weeklyAvailableHours,
+      recommendation_mode: input.recommendationMode,
       bio: input.bio,
       portfolio_url: input.portfolioUrl,
       experience: input.experience,
@@ -75,17 +95,26 @@ export async function saveProfile(input: ProfileFormInput): Promise<SaveProfileR
 
   // 다중 선택 항목들은 "전체 삭제 후 다시 삽입" 방식으로 멱등하게 반영한다 (온보딩 재방문/수정 모두 동일 경로).
   await supabase.from("profile_majors").delete().eq("profile_id", profileId);
-  if (input.majorIds.length > 0) {
-    await supabase
-      .from("profile_majors")
-      .insert(input.majorIds.map((major_id) => ({ profile_id: profileId, major_id })));
+  if (input.majorSelections.length > 0) {
+    await supabase.from("profile_majors").insert(
+      input.majorSelections.map((m) => ({
+        profile_id: profileId,
+        major_id: m.majorId,
+        kind: m.kind,
+        use_for_recommendation: m.useForRecommendation,
+      }))
+    );
   }
 
   await supabase.from("profile_interests").delete().eq("profile_id", profileId);
   if (input.interestIds.length > 0) {
-    await supabase
-      .from("profile_interests")
-      .insert(input.interestIds.map((interest_id) => ({ profile_id: profileId, interest_id })));
+    await supabase.from("profile_interests").insert(
+      input.interestIds.map((interest_id, index) => ({
+        profile_id: profileId,
+        interest_id,
+        priority: input.interestPriorityEnabled ? index + 1 : null,
+      }))
+    );
   }
 
   await supabase.from("profile_preferred_activity_types").delete().eq("profile_id", profileId);
@@ -131,8 +160,12 @@ export interface ReferenceData {
 export async function loadReferenceData(): Promise<ReferenceData> {
   const supabase = await createClient();
   const [majors, interests, activityTypes, skills] = await Promise.all([
-    supabase.from("majors").select("id, college, department, name").order("college"),
-    supabase.from("interests").select("id, name").order("name"),
+    supabase
+      .from("majors")
+      .select("id, college, department, name")
+      .eq("is_active", true)
+      .order("sort_order"),
+    supabase.from("interests").select("id, name").eq("is_active", true).order("sort_order"),
     supabase.from("activity_types").select("id, name").order("name"),
     supabase.from("skills").select("id, name").order("name"),
   ]);
@@ -150,17 +183,20 @@ export interface CurrentProfileData {
   campus: "서울" | "천안";
   grade: number | null;
   academicStatus: string;
+  majorStatus: MajorStatus;
   preferredLocationType: string | null;
   preferredRegion: string | null;
   weeklyAvailableHours: number | null;
+  recommendationMode: RecommendationMode;
   bio: string | null;
   portfolioUrl: string | null;
   experience: string | null;
   profileVisibility: string;
   matchingOptIn: boolean;
   notificationsEnabled: boolean;
-  majorIds: string[];
-  interestIds: string[];
+  majorSelections: MajorSelectionInput[];
+  interestIds: string[]; // priority 기준 정렬(오름차순), null은 뒤로.
+  interestPriorityEnabled: boolean;
   preferredActivityTypeIds: string[];
   skillIds: string[];
   availability: AvailabilityInput[];
@@ -174,8 +210,15 @@ export async function loadCurrentProfileData(): Promise<CurrentProfileData | nul
 
   const [profileRes, majorsRes, interestsRes, typesRes, skillsRes, availabilityRes] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", profileId).single(),
-    supabase.from("profile_majors").select("major_id").eq("profile_id", profileId),
-    supabase.from("profile_interests").select("interest_id").eq("profile_id", profileId),
+    supabase
+      .from("profile_majors")
+      .select("major_id, kind, use_for_recommendation")
+      .eq("profile_id", profileId),
+    supabase
+      .from("profile_interests")
+      .select("interest_id, priority")
+      .eq("profile_id", profileId)
+      .order("priority", { ascending: true, nullsFirst: false }),
     supabase.from("profile_preferred_activity_types").select("activity_type_id").eq("profile_id", profileId),
     supabase.from("profile_skills").select("skill_id").eq("profile_id", profileId),
     supabase.from("availability_slots").select("day_of_week, start_time, end_time").eq("profile_id", profileId),
@@ -184,22 +227,31 @@ export async function loadCurrentProfileData(): Promise<CurrentProfileData | nul
   const profile = profileRes.data;
   if (!profile) return null;
 
+  const interestRows = interestsRes.data ?? [];
+
   return {
     nickname: profile.nickname,
     campus: profile.campus,
     grade: profile.grade,
     academicStatus: profile.academic_status,
+    majorStatus: profile.major_status,
     preferredLocationType: profile.preferred_location_type,
     preferredRegion: profile.preferred_region,
     weeklyAvailableHours: profile.weekly_available_hours,
+    recommendationMode: profile.recommendation_mode,
     bio: profile.bio,
     portfolioUrl: profile.portfolio_url,
     experience: profile.experience,
     profileVisibility: profile.profile_visibility,
     matchingOptIn: profile.matching_opt_in,
     notificationsEnabled: profile.notifications_enabled,
-    majorIds: (majorsRes.data ?? []).map((r) => r.major_id),
-    interestIds: (interestsRes.data ?? []).map((r) => r.interest_id),
+    majorSelections: (majorsRes.data ?? []).map((r) => ({
+      majorId: r.major_id,
+      kind: r.kind as MajorKind,
+      useForRecommendation: r.use_for_recommendation,
+    })),
+    interestIds: interestRows.map((r) => r.interest_id),
+    interestPriorityEnabled: interestRows.some((r) => r.priority != null),
     preferredActivityTypeIds: (typesRes.data ?? []).map((r) => r.activity_type_id),
     skillIds: (skillsRes.data ?? []).map((r) => r.skill_id),
     availability: (availabilityRes.data ?? []).map((r) => ({
