@@ -192,8 +192,12 @@ export function findOrgConcentration(rows: ManifestRow[], threshold = 0.7): OrgC
   return results;
 }
 
-/** 라벨이 모델 클래스 ID인지(가이드 6.2) — model_class_field_map의 class_id 집합과 비교한다. */
+/** 라벨이 모델 클래스 ID인지(가이드 6.2) — model_class_field_map의 class_id 집합과 비교한다.
+ * OOD 라벨은 validClassIds에 없지만 ood split에서만 유효하다. ood split인데 라벨이 OOD가
+ * 아닌 행은(설령 그 라벨이 validClassIds에 있더라도) 계속 오류로 잡는다. */
 export function findInvalidLabels(rows: ManifestRow[], validClassIds: string[]): { line: ManifestRow; label: string }[] {
   const valid = new Set(validClassIds);
-  return rows.filter((row) => !valid.has(row.label)).map((row) => ({ line: row, label: row.label }));
+  return rows
+    .filter((row) => (row.split === "ood" ? row.label !== "OOD" : row.label === "OOD" || !valid.has(row.label)))
+    .map((row) => ({ line: row, label: row.label }));
 }

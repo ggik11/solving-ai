@@ -959,13 +959,13 @@ G3에서 분야 확정을 수정 화면("confirm" 모드)으로만 좁혀 뒀는
   예측값이 실제로 쓰이는 유일한 지점**이며, 실제 서비스 분석 코드(`src/lib/poster/analyze.ts`)
   에는 전혀 연결되지 않는다.
 - **`/admin/model-lab` 화면 (관리자 전용, 브라우저에서만 실행 — 이미지가 서버로 나가지 않는다):**
-  - **6.1 학습 이미지 변환 (`ImagePreprocessSection.tsx`):** 여러 이미지를 선택하면 서비스와
-    완전히 같은 전처리 함수(`src/lib/poster/preprocess.ts`의 `computeSquarePlacement`/
-    `renderToSquareCanvas`, 체크리스트 9번)로 맞춰 `_pad-square-v1` 접미사를 붙인 PNG로 파일별
-    다운로드한다. **원 가이드와의 차이:** 가이드는 "폴더 쓰기 API를 지원하면 폴더로, 아니면
-    zip 다운로드"라고 하지만, 이 저장소에는 zip 라이브러리가 없었고(package.json 확인) 새
-    의존성을 추가하지 않기 위해 **파일별 개별 다운로드**로 대체했다 — 결과물(변환된 PNG 묶음)은
-    동일하고, 브라우저 File System Access API는 Chromium 계열에만 있어 범용성이 낮다고 판단했다.
+  - **6.1 학습 이미지 변환 (`ImagePreprocessSection.tsx`):** 라벨별(IT_DATA/BUSINESS_PLANNING/
+    DESIGN_MEDIA/SOCIAL_ENVIRONMENT)로 train split 이미지를 고르면 서비스와 완전히 같은
+    전처리 함수(`src/lib/poster/preprocess.ts`의 `computeSquarePlacement`/`renderToSquareCanvas`,
+    체크리스트 9번)로 맞춰 `_pad-square-v1` 접미사를 붙인 PNG로 변환하고, 라벨 폴더로 나눈 zip
+    하나(`train-dataset.zip`)로 묶어 내려받는다. zip 압축은 `fflate`(`zipSync`)를 버튼 클릭 시
+    동적 import로 불러와 쓴다 — 이미지는 끝까지 브라우저 안에서만 처리되고 서버로 전송되지
+    않는다. webp를 포함한 `image/*` 입력을 받는다.
   - **6.2 데이터 목록 검사 (`ManifestCheckSection.tsx`):** manifest.csv를 올리면 분할 누수·분야별
     개수·기관 편중·라벨 유효성을 바로 보여준다. 모델 클래스 연결표(`model_class_field_map`)가
     아직 비어 있으면(실제 모델 전) 라벨 검사는 "건너뜀"으로 표시한다.

@@ -128,4 +128,26 @@ describe("findInvalidLabels", () => {
     const { rows } = parseManifestCsv(csv);
     expect(findInvalidLabels(rows, ["IT_DATA"])).toEqual([]);
   });
+
+  it("ood split에서 label=OOD는 유효하다(OOD가 validClassIds에 없어도)", () => {
+    const csv = [HEADER, "a.png,e1,,,,,OOD,,ood,"].join("\n");
+    const { rows } = parseManifestCsv(csv);
+    expect(findInvalidLabels(rows, ["IT_DATA", "DESIGN_MEDIA"])).toEqual([]);
+  });
+
+  it("ood split인데 라벨이 OOD가 아니면 그 라벨이 validClassIds에 있어도 오류로 잡는다", () => {
+    const csv = [HEADER, "a.png,e1,,,,,IT_DATA,,ood,"].join("\n");
+    const { rows } = parseManifestCsv(csv);
+    const invalid = findInvalidLabels(rows, ["IT_DATA", "DESIGN_MEDIA"]);
+    expect(invalid).toHaveLength(1);
+    expect(invalid[0].label).toBe("IT_DATA");
+  });
+
+  it("ood가 아닌 split에서 label=OOD는 오류로 잡는다", () => {
+    const csv = [HEADER, "a.png,e1,,,,,OOD,,train,"].join("\n");
+    const { rows } = parseManifestCsv(csv);
+    const invalid = findInvalidLabels(rows, ["IT_DATA", "DESIGN_MEDIA"]);
+    expect(invalid).toHaveLength(1);
+    expect(invalid[0].label).toBe("OOD");
+  });
 });
