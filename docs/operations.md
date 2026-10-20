@@ -253,7 +253,8 @@ JWT가 전달될 때(최초 연결, 로그인, 토큰 갱신)만 재평가된다
 1. **클래스 구성은 모델보다 먼저 존재해야 한다.** `classifier_class_sets`/
    `classifier_class_set_classes`는 마이그레이션으로만 추가한다(시드 아님 — 운영 DB에도
    적용되어야 하기 때문). 분야 구성을 바꾸지 않는 한(클래스 추가/제거) 기존 활성 구성
-   (`pilot-6-v1`, 이전 `pilot-4-v1`도 남아 있음)을 그대로 쓰면 되고, 이 단계는 생략할 수 있다.
+   (`pilot-7-v1`, 이전 `pilot-4-v1`/`pilot-6-v1`도 비활성으로 남아 있음)을 그대로 쓰면 되고,
+   이 단계는 생략할 수 있다.
 2. **모델 파일 배포 → 등록 → 평가 순서를 지킨다.** `public/models/poster-classifier/`에 새
    파일을 배포한 직후에는 아직 `model_class_field_map`에 새 `model_version`의 연결표가 없다 —
    `/admin/model-lab`에서 관리자가 직접 "등록"을 눌러야 후보 제안이 켜진다. 즉 **배포와 등록

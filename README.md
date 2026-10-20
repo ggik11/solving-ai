@@ -144,10 +144,10 @@ npm run worker:link-check
 
 `docs/teachable-machine-integration.md` 3.6/5.1, 9장 G3/G4 참조. 모델을 새로 학습하거나 교체할 때:
 
-1. 티처블 머신 Image Project에서 클래스 이름을 **고정 ID**(현재 활성 구성은 `pilot-6-v1`의
+1. 티처블 머신 Image Project에서 클래스 이름을 **고정 ID**(현재 활성 구성은 `pilot-7-v1`의
    `IT_ENGINEERING`/`BUSINESS_PLANNING`/`DESIGN_MEDIA`/`SOCIAL_ENVIRONMENT`/`LAW_POLICY`/
-   `CAMPUS_NOTICE` — 이전 4클래스 구성 `pilot-4-v1`도 지우지 않고 남아 있습니다)로 학습했는지
-   확인합니다. 클래스 구성 자체를 바꾸고 싶으면(분야 추가/제거) 먼저 새 마이그레이션으로
+   `CAMPUS_NOTICE`/`HOBBY_CULTURE` — 이전 구성 `pilot-4-v1`/`pilot-6-v1`도 지우지 않고 비활성으로
+   남아 있습니다)로 학습했는지 확인합니다. 클래스 구성 자체를 바꾸고 싶으면(분야 추가/제거) 먼저 새 마이그레이션으로
    `classifier_class_sets`/`classifier_class_set_classes`에 새 구성을 추가해야 합니다 — 운영
    환경에도 반영되어야 하므로 시드가 아니라 마이그레이션으로 추가합니다(`supabase/migrations/
    20261013060000_classifier_class_sets.sql`이 예시).

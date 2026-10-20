@@ -188,6 +188,39 @@
   `pilot-4-v1`/`pilot-6-v1` 중 검사·내보내기·등록에 쓸 클래스 구성을 고를 수 있다(화면마다 기본값은
   활성 구성).
 
+**보완(7.3 데이터 현실화): 파일럿 클래스 구성을 6개에서 7개로(`pilot-7-v1`).** 마이그레이션
+`20261020020000_classifier_class_set_pilot7.sql`이 `pilot-4-v1`/`pilot-6-v1`은 지우지 않고
+둘 다 비활성으로 남긴 채 새 활성 구성 `pilot-7-v1`을 추가한다. `HOBBY_CULTURE`(취미·문화생활)
+클래스가 새로 생겼고, `DESIGN_MEDIA`는 순수 미술·문학 공모를 포함하도록 후보를 넓혔다.
+
+| class_id | interest_id(후보) |
+|---|---|
+| IT_ENGINEERING | IT_DATA, ENGINEERING |
+| BUSINESS_PLANNING | BUSINESS_FINANCE |
+| DESIGN_MEDIA | DESIGN_MEDIA, ARTS_PERFORMANCE |
+| SOCIAL_ENVIRONMENT | SOCIAL_WELFARE, ENERGY_ENVIRONMENT |
+| LAW_POLICY | LAW_POLICY |
+| CAMPUS_NOTICE | (없음 — 서비스 분야 없음) |
+| HOBBY_CULTURE | SPORTS, ARTS_PERFORMANCE, HUMANITIES_CULTURE |
+
+- `DESIGN_MEDIA`에 `ARTS_PERFORMANCE`(미술·음악·공연·무용)를 후보로 추가했다 — pilot-6-v1까지는
+  순수 미술·문학 공모를 `ood`로 뒀지만(7.1/7.3), 실제로는 이런 공모가 꾸준히 들어와 디자인·미디어
+  신청과 섞이는 것을 보고 `DESIGN_MEDIA` 클래스 자체의 서비스 분야 후보를 넓혔다(라벨은 여전히
+  `DESIGN_MEDIA` 하나로 수집하고, 서비스 분야 후보만 둘로 늘린 것 — 가이드 7.3의 최신 라벨 규칙
+  참고).
+- `HOBBY_CULTURE`는 운동·취미·문화 동아리, 공연·축제·인문학 행사처럼 특정 실무 분야로 보기 어려운
+  활동을 모은 새 클래스다. 서비스 분야 후보 셋(SPORTS/ARTS_PERFORMANCE/HUMANITIES_CULTURE) 중
+  관리자가 원문을 보고 고른다.
+- `CAMPUS_NOTICE`는 pilot-6-v1과 같은 방식으로 처리한다(서비스 분야 없음, `interest_id` null,
+  1위여도 `needs_review`로 남김).
+- 이 마이그레이션은 `classifier_class_set_classes`/`model_class_field_map`의
+  `(..., class_id, interest_id)` 유니크 제약을 `NULLS NOT DISTINCT`로 바꿨다(PostgreSQL 15+) —
+  `interest_id`가 `null`인 행(예: `CAMPUS_NOTICE`)이 같은 class_set/model_version·class_id에
+  중복으로 쌓이는 것을 DB가 직접 막는다. 이전에는 표준 NULL 비교 규칙상 `on conflict`가 null
+  행의 중복을 잡지 못해 `not exists` 가드로 우회했었다(`20261020010000` 참고) — 이제는 필요 없다.
+- `/admin/model-lab`의 클래스 구성 선택 드롭다운에 `pilot-7-v1`이 추가되고, 기본값(활성 구성)도
+  자동으로 `pilot-7-v1`이 된다(화면 코드는 바뀌지 않았다 — DB의 클래스 구성 목록을 그대로 읽는다).
+
 ### 3.7 설정 (`app_settings`)
 
 ```json
@@ -413,6 +446,28 @@ manifest와 이미지 폴더를 선택하면 split별로 계산하고 JSON·마�
 - `CAMPUS_NOTICE`(교내 행정 공지: 수강신청·학사일정·시설 공지 등 특정 서비스 분야로 보기 어려운 공지)는 이어지는 서비스 분야가 없다 — 모델이 이 클래스를 1위로 예측해도 분야를 제안하지 않고 `needs_review`로 남겨 관리자가 직접 판단한다(`classifier_class_set_classes`/`model_class_field_map`에 `interest_id`를 명시적으로 비워 표시한다).
 
 **보고 범위:** 이 실험은 분야당 표본이 적은 **소규모 파일럿**이며, 7.2의 본 실험을 대체하지 않는다. 특히 `LAW_POLICY`와 `CAMPUS_NOTICE`는 표본이 8장씩(train 6 / test 2)뿐이라 다른 네 분야보다도 결과 해석의 한계가 크다 — test 2장의 정오로 정밀도·재현율이 0%나 100%로 요동칠 수 있으므로, 이 두 분야의 지표는 "추세 참고용"으로만 쓰고 단독으로 판단 근거로 삼지 않는다. `docs/model-evaluation.md`에 결과를 적을 때도 "소규모 파일럿(분야별 8~37장, dev 없이 1회 학습·1회 평가)"이라고 명시하고, 클래스별 표본 수가 적어 지표(특히 F1·혼동행렬)가 불안정할 수 있다는 한계를 함께 적는다.
+
+**보완: 클래스를 6개에서 7개로(`pilot-7-v1`, `supabase/migrations/20261020020000_classifier_class_set_pilot7.sql`).** 더 모은 자료를 다시 분류하면서 취미·문화생활 활동을 묶는 `HOBBY_CULTURE` 클래스를 새로 만들고, 순수 미술·문학 공모를 `DESIGN_MEDIA`로 흡수했다(라벨 규칙 갱신, 아래). `pilot-6-v1`은 지우지 않고 비활성으로 남겼다.
+
+| 분야 | train | test | 합계 |
+|---|---|---|---|
+| IT_ENGINEERING | 33 | 7 | 40 |
+| BUSINESS_PLANNING | 17 | 5 | 22 |
+| DESIGN_MEDIA | 30 | 8 | 38 |
+| SOCIAL_ENVIRONMENT | 32 | 7 | 39 |
+| LAW_POLICY | 6 | 2 | 8 |
+| CAMPUS_NOTICE | 6 | 2 | 8 |
+| HOBBY_CULTURE | 20 | 4 | 24 |
+| `ood` | — | — | 1 |
+| **합계** | | | **180** |
+
+라벨 규칙 갱신(위 7.3 본문의 규칙을 대체):
+- 운동·취미·문화 동아리, 공연·축제·인문학 행사는 `DESIGN_MEDIA`가 아니라 `HOBBY_CULTURE`로 분류한다 — 결과물 제작·실무가 중심이 아니라 참여·향유가 중심인 활동이기 때문이다.
+- 순수 미술·캘리그라피·문학 공모는 더 이상 `ood`가 아니라 `DESIGN_MEDIA`로 분류한다(3.6 보완 참고 — `DESIGN_MEDIA`의 서비스 분야 후보에 `ARTS_PERFORMANCE`를 추가해 반영했다). 위 7.3 본문의 "순수 미술 공모는 ood" 규칙은 `pilot-7-v1`부터 더 이상 적용하지 않는다.
+- 어학(외국어 회화·스터디) 동아리는 기존 4개 서비스 분야 중 어디에도 맞지 않아 `ood`로 둔다.
+- `IT_ENGINEERING`/`LAW_POLICY`/`CAMPUS_NOTICE` 규칙은 `pilot-6-v1`과 동일하게 유지한다.
+
+**한계(갱신):** `ood`가 1장뿐이라 이번 파일럿에서는 "범위 밖 포스터를 얼마나 잘 걸러내는지"는 평가하지 않는다 — test 1장으로는 재현율·정밀도가 의미 있는 수치가 되지 않는다. `LAW_POLICY`·`CAMPUS_NOTICE`는 여전히 8장씩(train 6 / test 2)이라 위에서 적은 해석 한계가 그대로 적용된다. `docs/model-evaluation.md`에는 "소규모 파일럿(분야별 8~40장, ood 1장으로 범위 밖 거르기는 평가 제외, dev 없이 1회 학습·1회 평가)"이라고 명시한다.
 
 ---
 

@@ -1142,3 +1142,31 @@ manifest 라벨 검사(가이드 6.2)가 "검사할 기준이 없음"으로 통�
   (`tests/e2e/model-lab-classifier-registration.spec.ts`)는 기본 선택이 더 이상 pilot-4-v1이
   아니므로 등록 전 "클래스 구성 선택"에서 pilot-4-v1을 명시적으로 고르도록 갱신했다.
   `npm test` 전체 통과, `npm run build` 성공(아래 검증 섹션 참조).
+
+## 파일럿 클래스 구성 확장: pilot-6-v1 → pilot-7-v1 (완료)
+
+- **배경(가이드 7.3 데이터 현실화 갱신):** 더 모은 자료를 다시 분류하면서 취미·문화생활
+  (`HOBBY_CULTURE`)을 새 클래스로 분리하고, 순수 미술·문학 공모를 `ood`가 아니라 `DESIGN_MEDIA`로
+  흡수했다(서비스 분야 후보에 `ARTS_PERFORMANCE`를 추가).
+- **마이그레이션(`20261020020000_classifier_class_set_pilot7.sql`, 신규 — 기존
+  `20261013060000`/`20261020010000`은 수정하지 않음):** `pilot-4-v1`/`pilot-6-v1`은 지우지 않고
+  둘 다 비활성으로 전환하고, 새 활성 구성 `pilot-7-v1`을 추가했다. 이번부터는 class_id →
+  interest_id를 하드코딩 UUID 대신 `interests.code` 서브쿼리로 찾고, 끝에서 "CAMPUS_NOTICE를
+  제외하고 interest_id가 null인 행이 없는지" 직접 검증하는 `do $$ ... raise exception` 가드를
+  둬 코드 오타를 막는다.
+- **유니크 제약 보강(이번 요청 2번):** `classifier_class_set_classes`/`model_class_field_map`의
+  `(..., class_id, interest_id)` 유니크 제약을 `NULLS NOT DISTINCT`로 바꿨다(PostgreSQL 17 —
+  15+에서 지원) — `interest_id`가 `null`인 행(CAMPUS_NOTICE 등)이 중복으로 쌓이는 것을 DB가 직접
+  막는다. pilot-6-v1 마이그레이션에서 썼던 "not exists" 우회는 이제 필요 없다(일반 `on conflict`로
+  충분).
+- **화면/판정 로직 변경 없음:** `/admin/model-lab`의 클래스 구성 선택 드롭다운과
+  `src/lib/poster/classifier.ts`/`analyze.ts`의 `classHasNoServiceField` 로직은 이미 DB의 클래스
+  구성을 그대로 읽는 일반화된 구조라, pilot-7-v1 추가만으로 자동으로 적용됐다 — 코드 변경이
+  필요 없었다.
+- **검증:** RLS 테스트(`tests/rls/classifier_class_sets.test.ts`) — `pilot-6-v1`이 지워지지 않고
+  비활성으로 남는지, `pilot-7-v1`이 갱신된 3.6 표대로 들어갔는지(`DESIGN_MEDIA` 두 후보,
+  `HOBBY_CULTURE` 세 후보, `CAMPUS_NOTICE`는 `null`), `register_classifier_model`로 등록하면
+  `model_class_field_map`에도 그대로 복사되는지, `(class_set_id, class_id, interest_id=null)`과
+  `(model_version, class_id, interest_id=null)` 중복 삽입이 유니크 제약으로 막히는지(`NULLS NOT
+  DISTINCT` 검증). E2E 스펙 주석을 pilot-7-v1 기준으로 갱신했다(동작 자체는 이미 class_set_id를
+  명시로 골라 영향 없음). `npm test` 전체 통과, `npm run build` 성공(아래 검증 섹션 참조).

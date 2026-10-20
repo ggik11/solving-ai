@@ -11,10 +11,11 @@ import { createAdminClient, TEST_USERS } from "../rls/helpers";
 // 한 테스트 안에서 로그인을 한 번만 해(로그인/OTP 빈도 제한, docs/operations.md 7절) "모델 미설치"
 // 상태 → metadata.json 배치 → 등록 → 평가 기본 모드 전환까지 순서대로 확인한다.
 //
-// 가이드 7.3 보완: 파일럿 클래스 구성이 pilot-4-v1(4클래스)에서 pilot-6-v1(6클래스)로 확장되며
-// pilot-6-v1이 새 활성 구성이 됐다(20261020010000_classifier_class_set_pilot6.sql). 이 테스트의
-// 픽스처 metadata.json은 여전히 pilot-4-v1의 4개 labels를 쓰므로, "클래스 구성 선택"의 기본값이
-// 더 이상 자동으로 일치하지 않는다 — 등록 전에 pilot-4-v1을 명시적으로 선택한다.
+// 가이드 7.3 보완: 파일럿 클래스 구성이 pilot-4-v1(4클래스) -> pilot-6-v1(6클래스) ->
+// pilot-7-v1(7클래스)로 확장되며 pilot-7-v1이 새 활성 구성이 됐다
+// (20261020020000_classifier_class_set_pilot7.sql). 이 테스트의 픽스처 metadata.json은 여전히
+// pilot-4-v1의 4개 labels를 쓰므로, "클래스 구성 선택"의 기본값이 더 이상 자동으로 일치하지
+// 않는다 — 등록 전에 pilot-4-v1을 명시적으로 선택한다.
 
 const MODEL_DIR = path.join(process.cwd(), "public", "models", "poster-classifier");
 const METADATA_PATH = path.join(MODEL_DIR, "metadata.json");
@@ -70,7 +71,7 @@ test("모델 미설치 → metadata 배치 → 등록 → 평가 기본 모드 �
     await expect(page.getByText("IT_DATA, BUSINESS_PLANNING, DESIGN_MEDIA, SOCIAL_ENVIRONMENT")).toBeVisible();
     await expect(page.getByRole("button", { name: "예측 결과 CSV 업로드" })).toHaveClass(/bg-\[var\(--color-brand-600\)\]/);
 
-    // 3. 기본 선택은 활성 구성 pilot-6-v1(6클래스)이라 4개 labels와 일치하지 않는다 — pilot-4-v1을
+    // 3. 기본 선택은 활성 구성 pilot-7-v1(7클래스)이라 4개 labels와 일치하지 않는다 — pilot-4-v1을
     //    선택해야 labels와 일치하고 등록 버튼이 활성화된다.
     await page.getByLabel("클래스 구성 선택").selectOption(PILOT4_CLASS_SET_ID);
     const registerButton = page.getByRole("button", { name: "등록", exact: true });
