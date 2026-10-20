@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_POSTER_CLASSIFIER_CONFIG,
+  classHasNoServiceField,
   hasClassFieldMapFor,
   judgePosterClassification,
   resolveCandidateInterestIds,
@@ -84,5 +85,32 @@ describe("resolveCandidateInterestIds / hasClassFieldMapFor (가이드 3.6)", ()
   it("모델 버전의 어떤 라벨도 연결표에 없으면 매핑 없음(연결표 없음 경고 대상)", () => {
     expect(hasClassFieldMapFor("v2", ["IT_DATA"], MAP)).toBe(false);
     expect(hasClassFieldMapFor("v1", ["SPORTS"], MAP)).toBe(false);
+  });
+});
+
+describe("classHasNoServiceField / resolveCandidateInterestIds — 서비스 분야 없는 클래스(가이드 3.6 보완, 예: CAMPUS_NOTICE)", () => {
+  const MAP_WITH_NO_FIELD_CLASS: ModelClassFieldMapRow[] = [
+    { modelVersion: "v1", classId: "IT_DATA", interestId: "interest-it-data" },
+    { modelVersion: "v1", classId: "CAMPUS_NOTICE", interestId: null },
+  ];
+
+  it("interest_id가 null인 행이 있으면 '서비스 분야 없음' 클래스로 본다", () => {
+    expect(classHasNoServiceField("CAMPUS_NOTICE", "v1", MAP_WITH_NO_FIELD_CLASS)).toBe(true);
+  });
+
+  it("interest_id가 실제로 있으면 '서비스 분야 없음'이 아니다", () => {
+    expect(classHasNoServiceField("IT_DATA", "v1", MAP_WITH_NO_FIELD_CLASS)).toBe(false);
+  });
+
+  it("연결표 자체에 없는 클래스는 '서비스 분야 없음'으로 보지 않는다(연결표 없음과는 다른 경우)", () => {
+    expect(classHasNoServiceField("SPORTS", "v1", MAP_WITH_NO_FIELD_CLASS)).toBe(false);
+  });
+
+  it("모델 버전이 다르면 '서비스 분야 없음' 표시가 적용되지 않는다", () => {
+    expect(classHasNoServiceField("CAMPUS_NOTICE", "v2", MAP_WITH_NO_FIELD_CLASS)).toBe(false);
+  });
+
+  it("interest_id가 null인 행은 후보 목록에서 제외된다(분야를 제안하지 않음)", () => {
+    expect(resolveCandidateInterestIds("CAMPUS_NOTICE", "v1", MAP_WITH_NO_FIELD_CLASS)).toEqual([]);
   });
 });

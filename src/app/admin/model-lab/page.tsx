@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { PageContainer } from "@/components/PageContainer";
 import { loadPosterClassifierConfig } from "@/lib/poster/query";
-import { activeClassIds, loadClassifierClassSets } from "@/lib/modelLab/classSets";
+import { loadClassifierClassSets } from "@/lib/modelLab/classSets";
 import { loadPosterModelMetadataFromDisk } from "@/lib/modelLab/modelMetadata";
 import { ImagePreprocessSection } from "./ImagePreprocessSection";
 import { ManifestCheckSection } from "./ManifestCheckSection";
@@ -53,8 +53,8 @@ export default async function ModelLabPage() {
         포스터 분류 모델을 학습·평가하는 도구예요. 이미지는 브라우저 안에서만 처리되고 서버로 전송되지 않아요.
       </p>
       <div className="flex flex-col gap-4">
-        <ImagePreprocessSection />
-        <ManifestCheckSection knownClassIds={activeClassIds(classifierClassSets)} />
+        <ImagePreprocessSection classSets={classifierClassSets} />
+        <ManifestCheckSection classSets={classifierClassSets} />
         <ModelRegistrationSection
           metadata={metadata}
           classSets={classifierClassSets}

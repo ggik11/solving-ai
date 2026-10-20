@@ -1109,3 +1109,36 @@ manifest 라벨 검사(가이드 6.2)가 "검사할 기준이 없음"으로 통�
   아니었기 때문이다. 구성을 추가/전환해야 할 필요가 생기면(본 실험 단계에서 분야를 늘리는 경우
   등) 새 마이그레이션으로 구성을 추가하고 `is_active`를 옮기면 된다(화면 없이도 SQL로 충분하며,
   README "포스터 분류 모델 교체 절차"에 적어 뒀다).
+
+## 파일럿 클래스 구성 확장: pilot-4-v1 → pilot-6-v1 (완료)
+
+- **배경(가이드 7.3 데이터 현실화 갱신):** 실제 수집 자료를 6개 분야로 다시 나누기로 하면서
+  파일럿 클래스를 4개에서 6개로 늘렸다. IT와 공학을 `IT_ENGINEERING`으로 통합하고, `LAW_POLICY`
+  (법·정책)와 `CAMPUS_NOTICE`(교내 행정 공지, 서비스 분야 없음)를 새로 분리했다.
+- **마이그레이션(`20261020010000_classifier_class_set_pilot6.sql`, 신규 — 기존
+  `20261013060000`은 수정하지 않음):** `pilot-4-v1`은 지우지 않고 비활성으로만 바꾸고, 새
+  활성 구성 `pilot-6-v1`을 추가했다. `CAMPUS_NOTICE`는 이어지는 서비스 분야가 없어
+  `classifier_class_set_classes`/`model_class_field_map`의 `interest_id`를 `null`로 넣는다 —
+  이를 표현하기 위해 두 테이블의 `interest_id` 컬럼을 `drop not null`로 nullable로 바꿨다(기존
+  행은 전부 값이 있어 영향 없음). `register_classifier_model()` 함수 자체는 손대지 않았다 —
+  이미 class_id 단위로 복사하는 로직이라 `interest_id`가 null이어도 그대로 동작한다.
+- **판정 로직(`src/lib/poster/classifier.ts`/`analyze.ts`):** `interestId: string | null`로
+  바꾸고, `classHasNoServiceField()`를 추가했다. `resolveCandidateInterestIds()`는 null 행을
+  후보에서 제외하고, `analyzePoster()`는 1위 클래스가 "서비스 분야 없음"으로 표시됐으면 점수가
+  임계값을 넘어도 `suggested`로 올리지 않고 `needs_review`로 강제한다. `PosterClassifierPanel`은
+  이 경우 "교내 행정 공지로 보여요"로 안내한다(관리자 등록/수정 화면과 사용자 제보 화면이 모두
+  이 컴포넌트를 공유해 똑같이 보인다).
+- **화면(`/admin/model-lab`):** `ManifestCheckSection`(검사 기준)과 `ImagePreprocessSection`
+  (내보낼 라벨 폴더 — `TRAIN_LABELS` 하드코딩을 없앰) 둘 다 클래스 구성 선택 드롭다운을 새로
+  추가해 `pilot-4-v1`/`pilot-6-v1`을 고를 수 있다. `ModelRegistrationSection`은 이미 구성
+  선택자가 있어 코드 변경 없이 그대로 pilot-6-v1을 등록 대상으로 고를 수 있었다.
+- **검증:** 단위 테스트(`tests/unit/poster-classifier.test.ts`/`poster-analyze.test.ts`) —
+  `classHasNoServiceField`/`resolveCandidateInterestIds`의 null 처리, `analyzePoster`가
+  "서비스 분야 없음" 클래스를 1위로 받으면 점수와 무관하게 needs_review로 내리는지(갓 예측한
+  경우·캐시된 경우 둘 다). RLS 테스트(`tests/rls/classifier_class_sets.test.ts`) — `pilot-4-v1`이
+  지워지지 않고 비활성으로 남는지, `pilot-6-v1`이 가이드 3.6 보완 표대로 들어갔는지(`CAMPUS_NOTICE`
+  의 `interest_id`가 `null`인지 포함), `register_classifier_model`로 pilot-6-v1을 등록하면
+  `model_class_field_map`에도 `CAMPUS_NOTICE`가 `interest_id null`로 복사되는지. E2E
+  (`tests/e2e/model-lab-classifier-registration.spec.ts`)는 기본 선택이 더 이상 pilot-4-v1이
+  아니므로 등록 전 "클래스 구성 선택"에서 pilot-4-v1을 명시적으로 고르도록 갱신했다.
+  `npm test` 전체 통과, `npm run build` 성공(아래 검증 섹션 참조).

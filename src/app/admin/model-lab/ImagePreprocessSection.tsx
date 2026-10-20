@@ -3,31 +3,33 @@
 import { useState } from "react";
 import { PREPROCESS_VERSION, computeSquarePlacement, renderToSquareCanvas } from "@/lib/poster/preprocess";
 import { downloadBlob, stripExtension } from "@/lib/modelLab/download";
-
-/** train split 라벨 폴더 이름(가이드 7장 데이터 현실화 절의 4분야). */
-const TRAIN_LABELS = ["IT_DATA", "BUSINESS_PLANNING", "DESIGN_MEDIA", "SOCIAL_ENVIRONMENT"] as const;
-type TrainLabel = (typeof TRAIN_LABELS)[number];
+import type { ClassifierClassSet } from "@/lib/modelLab/classSets";
 
 /**
  * 6.1 학습 이미지 변환(가이드 6.1). 서비스 분석과 완전히 같은 전처리 함수(preprocess.ts)를
  * 그대로 써서, 학습 자료도 서비스가 보는 것과 같은 모양으로 맞춘다(체크리스트 9번). 이미지는
  * 브라우저 밖으로 나가지 않는다 — 라벨별로 고른 train split 이미지를 변환한 뒤, 라벨 폴더로
- * 나눈 zip 하나로 묶어 내려받는다. fflate는 버튼을 누를 때만 동적으로 불러온다.
+ * 나눈 zip 하나로 묶어 내려받는다. fflate는 버튼을 누를 때만 동적으로 불러온다. 라벨 폴더
+ * 목록은 선택한 클래스 구성(pilot-4-v1/pilot-6-v1 등)에서 가져온다 — 하드코딩하지 않는다.
  */
-export function ImagePreprocessSection() {
-  const [filesByLabel, setFilesByLabel] = useState<Record<TrainLabel, File[]>>({
-    IT_DATA: [],
-    BUSINESS_PLANNING: [],
-    DESIGN_MEDIA: [],
-    SOCIAL_ENVIRONMENT: [],
-  });
+export function ImagePreprocessSection({ classSets }: { classSets: ClassifierClassSet[] }) {
+  const defaultClassSetId = classSets.find((s) => s.isActive)?.id ?? classSets[0]?.id ?? "";
+  const [classSetId, setClassSetId] = useState(defaultClassSetId);
+  const trainLabels = classSets.find((s) => s.id === classSetId)?.classIds ?? [];
+
+  const [filesByLabel, setFilesByLabel] = useState<Record<string, File[]>>({});
   const [status, setStatus] = useState<"idle" | "running" | "done">("idle");
   const [progress, setProgress] = useState(0);
   const [errors, setErrors] = useState<string[]>([]);
 
-  const totalFiles = TRAIN_LABELS.reduce((sum, label) => sum + filesByLabel[label].length, 0);
+  const totalFiles = trainLabels.reduce((sum, label) => sum + (filesByLabel[label]?.length ?? 0), 0);
 
-  function handleSelect(label: TrainLabel, fileList: FileList | null) {
+  function handleClassSetChange(id: string) {
+    setClassSetId(id);
+    setFilesByLabel({});
+  }
+
+  function handleSelect(label: string, fileList: FileList | null) {
     setFilesByLabel((prev) => ({ ...prev, [label]: Array.from(fileList ?? []) }));
   }
 
@@ -39,8 +41,8 @@ export function ImagePreprocessSection() {
     const zipEntries: Record<string, Uint8Array> = {};
     let done = 0;
 
-    for (const label of TRAIN_LABELS) {
-      for (const file of filesByLabel[label]) {
+    for (const label of trainLabels) {
+      for (const file of filesByLabel[label] ?? []) {
         try {
           const bitmap = await createImageBitmap(file);
           const canvas = renderToSquareCanvas(bitmap, { width: bitmap.width, height: bitmap.height });
@@ -73,7 +75,22 @@ export function ImagePreprocessSection() {
         라벨별로 train split 이미지를 고르면 서비스와 같은 전처리({PREPROCESS_VERSION})로 맞춰 라벨 폴더로 나눈 zip
         하나로 내려받아요. 압축을 풀어 티처블 머신에 폴더째 업로드하세요.
       </p>
-      {TRAIN_LABELS.map((label) => (
+      <label className="flex flex-col gap-1 text-sm font-medium">
+        내보낼 클래스 구성
+        <select
+          value={classSetId}
+          onChange={(e) => handleClassSetChange(e.target.value)}
+          disabled={status === "running"}
+          className="rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-2 py-1.5 text-sm font-normal"
+        >
+          {classSets.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name} ({s.code}){s.isActive ? " · 활성" : ""}
+            </option>
+          ))}
+        </select>
+      </label>
+      {trainLabels.map((label) => (
         <label key={label} className="flex flex-col gap-1 text-sm font-medium">
           {label}/ (여러 장)
           <input
@@ -84,7 +101,7 @@ export function ImagePreprocessSection() {
             disabled={status === "running"}
             className="text-sm font-normal"
           />
-          {filesByLabel[label].length > 0 && (
+          {(filesByLabel[label]?.length ?? 0) > 0 && (
             <span className="text-xs font-normal text-[var(--color-muted-foreground)]">
               {filesByLabel[label].length}개 선택됨
             </span>

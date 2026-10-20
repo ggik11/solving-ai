@@ -165,6 +165,29 @@
 - manifest 라벨 검사(6.2)는 이제 `model_class_field_map`이 아니라 **활성 클래스 구성**의
   class_id 집합을 기준으로 한다 — 모델 등록 여부와 무관하게 항상 검사할 수 있다.
 
+**보완(7.3 데이터 현실화): 파일럿 클래스 구성을 4개에서 6개로(`pilot-6-v1`).** 마이그레이션
+`20261020010000_classifier_class_set_pilot6.sql`이 `pilot-4-v1`은 지우지 않고 비활성으로 남긴
+채 새 활성 구성 `pilot-6-v1`을 추가한다.
+
+| class_id | interest_id(후보) |
+|---|---|
+| IT_ENGINEERING | IT_DATA, ENGINEERING |
+| BUSINESS_PLANNING | BUSINESS_FINANCE |
+| DESIGN_MEDIA | DESIGN_MEDIA |
+| SOCIAL_ENVIRONMENT | SOCIAL_WELFARE, ENERGY_ENVIRONMENT |
+| LAW_POLICY | LAW_POLICY |
+| CAMPUS_NOTICE | (없음 — 서비스 분야 없음) |
+
+- `CAMPUS_NOTICE`는 이어지는 서비스 분야가 없는 클래스다. `classifier_class_set_classes`/
+  `model_class_field_map`의 `interest_id`를 `null`로 둬 "아직 매핑을 못 채운 버그"와 구분한다
+  (두 테이블 모두 이 마이그레이션에서 `interest_id`를 nullable로 바꿨다). 분석 로직
+  (`src/lib/poster/classifier.ts`의 `classHasNoServiceField`, `analyze.ts`)이 이 클래스가 1위여도
+  점수와 무관하게 `suggested`로 올리지 않고 `needs_review`로 남긴다 — 화면은 "교내 행정 공지로
+  보여요"로 안내한다.
+- `/admin/model-lab`의 "6.2 데이터 목록 검사"·"6.1 학습 이미지 변환"·"모델 등록" 섹션 모두
+  `pilot-4-v1`/`pilot-6-v1` 중 검사·내보내기·등록에 쓸 클래스 구성을 고를 수 있다(화면마다 기본값은
+  활성 구성).
+
 ### 3.7 설정 (`app_settings`)
 
 ```json
@@ -363,14 +386,18 @@ manifest와 이미지 폴더를 선택하면 split별로 계산하고 JSON·마�
 
 실제로 확보한 자료는 7.1의 "클래스당 40장(train 40 / test 10)" 목표에 못 미친다. 목표치를 더 모으려 하지 않고, **확보한 185장으로 소규모 파일럿 1회 실험만** 진행한다.
 
+클래스 구성도 4개(`pilot-4-v1`)에서 6개(`pilot-6-v1`, `supabase/migrations/20261020010000_classifier_class_set_pilot6.sql`)로 바꿨다 — IT·공학을 하나로 합치고, 법·정책과 교내 행정 공지를 분리해 별도 클래스로 둔다.
+
 | 분야 | train | test | 합계 |
 |---|---|---|---|
-| IT_DATA | 21 | 5 | 26 |
-| BUSINESS_PLANNING | 16 | 4 | 20 |
-| DESIGN_MEDIA | 20 | 6 | 26 |
-| SOCIAL_ENVIRONMENT | 25 | 6 | 31 |
-| `ood` | — | — | 64 |
-| 보류(라벨 미확정, 미사용) | — | — | 18 |
+| IT_ENGINEERING | 30 | 7 | 37 |
+| BUSINESS_PLANNING | 17 | 5 | 22 |
+| DESIGN_MEDIA | 22 | 6 | 28 |
+| SOCIAL_ENVIRONMENT | 29 | 6 | 35 |
+| LAW_POLICY | 6 | 2 | 8 |
+| CAMPUS_NOTICE | 6 | 2 | 8 |
+| `ood` | — | — | 41 |
+| 보류(라벨 미확정, 미사용) | — | — | 6 |
 | **합계** | | | **185** |
 
 절차상 차이(7.1과 비교):
@@ -379,9 +406,13 @@ manifest와 이미지 폴더를 선택하면 split별로 계산하고 JSON·마�
 - 개수를 맞추려고 이미지를 복제하거나 증강(회전·크롭·색 보정 등)하지 않는다 — 복제·증강으로 늘린 장수는 실제로는 같은 정보의 반복이라 평가를 왜곡한다.
 - 같은 시리즈(동일 행사의 여러 공고 변형본)의 포스터는 7.1의 원칙대로 같은 split에 둔다. train과 test에 같은 시리즈가 섞이지 않도록 manifest의 `series_id`로 확인한다.
 
-라벨 규칙 보완: 순수 미술 공모(회화·조각·캘리그라피 등 작가 공모)는 `DESIGN_MEDIA`가 아니라 `ood`로 둔다. `DESIGN_MEDIA`는 디자인·미디어 **실무·제작** 과업(홍보물 디자인, 영상·콘텐츠 제작 등)을 대상으로 하며, 순수 예술 창작 공모는 그 과업 범위 밖이므로 학습 범위 밖 이미지로 분류한다.
+라벨 규칙 보완:
+- 순수 미술 공모(회화·조각·캘리그라피 등 작가 공모)는 `DESIGN_MEDIA`가 아니라 `ood`로 둔다. `DESIGN_MEDIA`는 디자인·미디어 **실무·제작** 과업(홍보물 디자인, 영상·콘텐츠 제작 등)을 대상으로 하며, 순수 예술 창작 공모는 그 과업 범위 밖이므로 학습 범위 밖 이미지로 분류한다.
+- 단순 참관(발표회·설명회·행사 관람 등 결과물 제출이 없는) 행사는 주제가 가장 가까운 분야로 분류한다 — "참관"이라는 형식만으로 보류하거나 `ood`로 두지 않는다.
+- 공학(전자·기계·제조 등)은 더 이상 별도 클래스를 두지 않고 `IT_ENGINEERING`에 통합한다 — IT와 공학을 가르는 경계가 애매한 포스터가 많고, 둘 다 표본이 적어 따로 두면 각 클래스가 더 희소해지기 때문이다.
+- `CAMPUS_NOTICE`(교내 행정 공지: 수강신청·학사일정·시설 공지 등 특정 서비스 분야로 보기 어려운 공지)는 이어지는 서비스 분야가 없다 — 모델이 이 클래스를 1위로 예측해도 분야를 제안하지 않고 `needs_review`로 남겨 관리자가 직접 판단한다(`classifier_class_set_classes`/`model_class_field_map`에 `interest_id`를 명시적으로 비워 표시한다).
 
-**보고 범위:** 이 실험은 분야당 표본이 20~30장 수준인 **소규모 파일럿**이며, 7.2의 본 실험을 대체하지 않는다. `docs/model-evaluation.md`에 결과를 적을 때도 "소규모 파일럿(분야별 20~31장, dev 없이 1회 학습·1회 평가)"이라고 명시하고, 클래스별 표본 수가 적어 지표(특히 F1·혼동행렬)가 불안정할 수 있다는 한계를 함께 적는다.
+**보고 범위:** 이 실험은 분야당 표본이 적은 **소규모 파일럿**이며, 7.2의 본 실험을 대체하지 않는다. 특히 `LAW_POLICY`와 `CAMPUS_NOTICE`는 표본이 8장씩(train 6 / test 2)뿐이라 다른 네 분야보다도 결과 해석의 한계가 크다 — test 2장의 정오로 정밀도·재현율이 0%나 100%로 요동칠 수 있으므로, 이 두 분야의 지표는 "추세 참고용"으로만 쓰고 단독으로 판단 근거로 삼지 않는다. `docs/model-evaluation.md`에 결과를 적을 때도 "소규모 파일럿(분야별 8~37장, dev 없이 1회 학습·1회 평가)"이라고 명시하고, 클래스별 표본 수가 적어 지표(특히 F1·혼동행렬)가 불안정할 수 있다는 한계를 함께 적는다.
 
 ---
 

@@ -114,6 +114,82 @@ describe("analyzePoster", () => {
   });
 });
 
+describe("analyzePoster — 서비스 분야 없는 클래스(가이드 3.6 보완, 예: CAMPUS_NOTICE)", () => {
+  const MAP_WITH_NO_FIELD_CLASS: ModelClassFieldMapRow[] = [
+    { modelVersion: "v1", classId: "IT_DATA", interestId: "interest-it-data" },
+    { modelVersion: "v1", classId: "CAMPUS_NOTICE", interestId: null },
+  ];
+
+  it("1위 클래스가 서비스 분야 없음으로 표시됐으면 점수가 임계값을 넘어도 needs_review로 두고 분야를 제안하지 않는다", async () => {
+    const model = fakeModel(["IT_DATA", "CAMPUS_NOTICE"], [{ classId: "CAMPUS_NOTICE", score: 0.95 }]);
+    const findCached = vi.fn().mockResolvedValue(null);
+
+    const result = await analyzePoster({
+      activityId: "activity-1",
+      posterHash: "hash-campus",
+      preprocessingVersion: "pad-square-v1",
+      model,
+      canvas: CANVAS,
+      config: DEFAULT_POSTER_CLASSIFIER_CONFIG,
+      classFieldMap: MAP_WITH_NO_FIELD_CLASS,
+      findCached,
+    });
+
+    expect(result.status).toBe("needs_review");
+    expect(result.topClass).toBe("CAMPUS_NOTICE");
+    expect(result.noServiceFieldClass).toBe(true);
+    expect(result.candidateInterestIds).toEqual([]);
+  });
+
+  it("다른 클래스가 1위면 서비스 분야 없음 표시가 적용되지 않는다", async () => {
+    const model = fakeModel(["IT_DATA", "CAMPUS_NOTICE"], [{ classId: "IT_DATA", score: 0.95 }]);
+    const findCached = vi.fn().mockResolvedValue(null);
+
+    const result = await analyzePoster({
+      activityId: "activity-1",
+      posterHash: "hash-it",
+      preprocessingVersion: "pad-square-v1",
+      model,
+      canvas: CANVAS,
+      config: DEFAULT_POSTER_CLASSIFIER_CONFIG,
+      classFieldMap: MAP_WITH_NO_FIELD_CLASS,
+      findCached,
+    });
+
+    expect(result.status).toBe("suggested");
+    expect(result.noServiceFieldClass).toBe(false);
+    expect(result.candidateInterestIds).toEqual(["interest-it-data"]);
+  });
+
+  it("캐시된 결과도 topClass가 서비스 분야 없음 클래스면 noServiceFieldClass를 true로 계산한다", async () => {
+    const model = fakeModel(["CAMPUS_NOTICE"], [{ classId: "CAMPUS_NOTICE", score: 0.95 }]);
+    const cached: CachedPosterAnalysis = {
+      scores: [{ classId: "CAMPUS_NOTICE", score: 0.95 }],
+      status: "needs_review",
+      topClass: "CAMPUS_NOTICE",
+      topScore: 0.95,
+      margin: 0.95,
+      failureReason: null,
+    };
+    const findCached = vi.fn().mockResolvedValue(cached);
+
+    const result = await analyzePoster({
+      activityId: "activity-1",
+      posterHash: "hash-campus-cached",
+      preprocessingVersion: "pad-square-v1",
+      model,
+      canvas: CANVAS,
+      config: DEFAULT_POSTER_CLASSIFIER_CONFIG,
+      classFieldMap: MAP_WITH_NO_FIELD_CLASS,
+      findCached,
+    });
+
+    expect(result.fromCache).toBe(true);
+    expect(result.noServiceFieldClass).toBe(true);
+    expect(result.candidateInterestIds).toEqual([]);
+  });
+});
+
 describe("buildFailedAnalysisResult", () => {
   it("모델 미설치 등 실패를 점수 0이나 특정 분야로 저장하지 않는다(가이드 3.5 체크리스트 7번)", () => {
     const result = buildFailedAnalysisResult({
@@ -126,6 +202,7 @@ describe("buildFailedAnalysisResult", () => {
     expect(result.scores).toEqual([]);
     expect(result.topClass).toBeNull();
     expect(result.candidateInterestIds).toEqual([]);
+    expect(result.noServiceFieldClass).toBe(false);
     expect(result.failureReason).toBe("model_missing");
   });
 });

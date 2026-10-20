@@ -3,6 +3,7 @@
  * 부분은 의존성으로 주입받아, 이 함수 자체는 모델 없이도(목을 주입해) 단위 테스트할 수 있다.
  */
 import {
+  classHasNoServiceField,
   hasClassFieldMapFor,
   judgePosterClassification,
   resolveCandidateInterestIds,
@@ -31,6 +32,9 @@ export interface PosterAnalysisResult extends CachedPosterAnalysis {
   candidateInterestIds: string[];
   /** 이 모델 버전의 클래스에 연결표가 하나도 없음 — "연결표 없음" 경고용(가이드 3.6). */
   classFieldMapMissing: boolean;
+  /** topClass가 "서비스 분야 없음"으로 명시된 클래스인지(가이드 3.6 보완, 예: CAMPUS_NOTICE) —
+   * true면 status는 이미 needs_review로 내려가 있고 candidateInterestIds는 비어 있다. */
+  noServiceFieldClass: boolean;
   /** 같은 (활동, 해시, 모델, 전처리) 분석을 재사용했는지(가이드 3.5) — 다시 예측하지 않았다. */
   fromCache: boolean;
 }
@@ -62,18 +66,36 @@ export async function analyzePoster(deps: AnalyzePosterDeps): Promise<PosterAnal
     const candidateInterestIds = cached.topClass
       ? resolveCandidateInterestIds(cached.topClass, model.modelVersion, classFieldMap)
       : [];
-    return { ...cached, posterHash, modelVersion: model.modelVersion, preprocessingVersion, candidateInterestIds, classFieldMapMissing, fromCache: true };
+    const noServiceFieldClass = cached.topClass
+      ? classHasNoServiceField(cached.topClass, model.modelVersion, classFieldMap)
+      : false;
+    return {
+      ...cached,
+      posterHash,
+      modelVersion: model.modelVersion,
+      preprocessingVersion,
+      candidateInterestIds,
+      classFieldMapMissing,
+      noServiceFieldClass,
+      fromCache: true,
+    };
   }
 
   const scores = await model.predict(canvas);
   const judgment = judgePosterClassification(scores, config);
+  const noServiceFieldClass = judgment.topClass
+    ? classHasNoServiceField(judgment.topClass, model.modelVersion, classFieldMap)
+    : false;
+  // CAMPUS_NOTICE처럼 "서비스 분야 없음"으로 명시된 클래스는 점수가 임계값을 넘어도 분야를
+  // 제안하지 않는다 — suggested로 올리지 않고 needs_review로 둔다(가이드 3.6 보완).
+  const status: PosterAnalysisStatus = noServiceFieldClass ? "needs_review" : judgment.status;
   const candidateInterestIds = judgment.topClass
     ? resolveCandidateInterestIds(judgment.topClass, model.modelVersion, classFieldMap)
     : [];
 
   return {
     scores,
-    status: judgment.status,
+    status,
     topClass: judgment.topClass,
     topScore: judgment.topScore,
     margin: judgment.margin,
@@ -83,6 +105,7 @@ export async function analyzePoster(deps: AnalyzePosterDeps): Promise<PosterAnal
     preprocessingVersion,
     candidateInterestIds,
     classFieldMapMissing,
+    noServiceFieldClass,
     fromCache: false,
   };
 }
@@ -106,6 +129,7 @@ export function buildFailedAnalysisResult(args: {
     preprocessingVersion: args.preprocessingVersion,
     candidateInterestIds: [],
     classFieldMapMissing: false,
+    noServiceFieldClass: false,
     fromCache: false,
   };
 }

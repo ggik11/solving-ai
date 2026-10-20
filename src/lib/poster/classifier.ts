@@ -60,22 +60,35 @@ export function judgePosterClassification(scores: ClassScore[], config: PosterCl
 export interface ModelClassFieldMapRow {
   modelVersion: string;
   classId: string;
-  interestId: string;
+  /** null이면 "서비스 분야 없음"을 의도적으로 표시한 클래스다(가이드 3.6 보완, 예: 교내 행정
+   * 공지 CAMPUS_NOTICE) — "아직 매핑을 못 채운 버그"와 구분한다. */
+  interestId: string | null;
 }
 
 /**
  * 1위 클래스를 서비스 분야 후보로 바꾼다(가이드 3.6). 한 클래스가 여러 후보로 연결될 수 있다.
- * 매핑이 없는 모델 버전/클래스면 빈 배열을 반환한다 — 호출부가 "연결표 없음" 경고로 표시한다.
+ * 매핑이 없는 모델 버전/클래스거나 "서비스 분야 없음"으로 표시된 클래스(interestId null)면
+ * 빈 배열을 반환한다 — 호출부가 "연결표 없음" 경고나 "분야 없음" 안내로 표시한다.
  */
 export function resolveCandidateInterestIds(
   classId: string,
   modelVersion: string,
   map: ModelClassFieldMapRow[]
 ): string[] {
-  return map.filter((m) => m.modelVersion === modelVersion && m.classId === classId).map((m) => m.interestId);
+  return map
+    .filter((m) => m.modelVersion === modelVersion && m.classId === classId && m.interestId !== null)
+    .map((m) => m.interestId as string);
 }
 
 /** metadata.json의 labels가 연결표의 class_id와 하나라도 겹치지 않으면 "연결표 없음"으로 본다. */
 export function hasClassFieldMapFor(modelVersion: string, labels: string[], map: ModelClassFieldMapRow[]): boolean {
   return labels.some((label) => map.some((m) => m.modelVersion === modelVersion && m.classId === label));
+}
+
+/**
+ * 이 클래스가 "서비스 분야 없음"으로 명시적으로 연결됐는지(가이드 3.6 보완, 예: CAMPUS_NOTICE).
+ * true면 1위로 나와도 분야를 제안하지 않고 needs_review로 둬야 한다(analyzePoster가 적용).
+ */
+export function classHasNoServiceField(classId: string, modelVersion: string, map: ModelClassFieldMapRow[]): boolean {
+  return map.some((m) => m.modelVersion === modelVersion && m.classId === classId && m.interestId === null);
 }

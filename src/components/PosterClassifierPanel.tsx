@@ -204,7 +204,11 @@ export function PosterClassifierPanel({
                 </div>
               ) : (
                 <>
-                  <p className="text-sm text-[var(--color-muted-foreground)]">확신이 낮아요. 원문을 보고 직접 선택해 주세요.</p>
+                  <p className="text-sm text-[var(--color-muted-foreground)]">
+                    {result.noServiceFieldClass
+                      ? "교내 행정 공지로 보여요. 서비스 분야 후보를 제안하지 않아요 — 분야를 직접 선택해 주세요."
+                      : "확신이 낮아요. 원문을 보고 직접 선택해 주세요."}
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     {result.candidateInterestIds.map((id) => (
                       <span key={id} className="rounded-full border border-[var(--color-border)] px-3 py-1 text-xs text-[var(--color-muted-foreground)]">

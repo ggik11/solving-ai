@@ -11,16 +11,22 @@ import {
   type OrgConcentration,
   type SplitLeak,
 } from "@/lib/modelLab/manifest";
+import type { ClassifierClassSet } from "@/lib/modelLab/classSets";
 
 /** 6.2 데이터 목록 검사(가이드 6.2). datasets/manifest.csv 양식을 올리면 분할 누수·분야 개수
- * 불균형·기관 편중·라벨 유효성을 바로 확인한다. */
-export function ManifestCheckSection({ knownClassIds }: { knownClassIds: string[] }) {
+ * 불균형·기관 편중·라벨 유효성을 바로 확인한다. 라벨 유효성은 선택한 클래스 구성(예: pilot-4-v1/
+ * pilot-6-v1) 기준으로 검사한다 — 기본값은 활성 구성이다. */
+export function ManifestCheckSection({ classSets }: { classSets: ClassifierClassSet[] }) {
+  const defaultClassSetId = classSets.find((s) => s.isActive)?.id ?? classSets[0]?.id ?? "";
+  const [classSetId, setClassSetId] = useState(defaultClassSetId);
   const [parseErrors, setParseErrors] = useState<{ line: number; message: string }[]>([]);
   const [leaks, setLeaks] = useState<SplitLeak[] | null>(null);
   const [balance, setBalance] = useState<ClassBalanceRow[] | null>(null);
   const [concentration, setConcentration] = useState<OrgConcentration[] | null>(null);
   const [invalidLabels, setInvalidLabels] = useState<{ label: string }[] | null>(null);
   const [rowCount, setRowCount] = useState<number | null>(null);
+
+  const knownClassIds = classSets.find((s) => s.id === classSetId)?.classIds ?? [];
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -42,6 +48,20 @@ export function ManifestCheckSection({ knownClassIds }: { knownClassIds: string[
       <p className="text-xs text-[var(--color-muted-foreground)]">
         datasets/manifest.csv 양식을 올리면 분할 누수·분야 개수 불균형·기관 편중·라벨 유효성을 확인해요.
       </p>
+      <label className="flex flex-col gap-1 text-sm font-medium">
+        검사할 클래스 구성
+        <select
+          value={classSetId}
+          onChange={(e) => setClassSetId(e.target.value)}
+          className="rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-2 py-1.5 text-sm font-normal"
+        >
+          {classSets.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name} ({s.code}){s.isActive ? " · 활성" : ""}
+            </option>
+          ))}
+        </select>
+      </label>
       <label className="flex flex-col gap-1 text-sm font-medium">
         manifest.csv 선택
         <input type="file" accept=".csv,text/csv" onChange={handleFile} className="text-sm font-normal" />
