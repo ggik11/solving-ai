@@ -14,6 +14,9 @@ import {
   type PosterFailureReason,
 } from "./classifier";
 import type { LoadedPosterModel } from "./modelLoader";
+import { combinePosterSignals, POSTPROCESS_VERSION, type RankedClass } from "./combine";
+import { classifyByKeywords, KEYWORDS_VERSION } from "./keywordRules";
+import { classifyByEmbedding, EMBED_VERSION, type EmbeddingReference } from "./embeddingClassifier";
 
 export interface CachedPosterAnalysis {
   scores: ClassScore[];
@@ -22,6 +25,27 @@ export interface CachedPosterAnalysis {
   topScore: number | null;
   margin: number | null;
   failureReason: PosterFailureReason | null;
+  /** 캐시된 분석에 2차 후처리 결과가 이미 있으면(가이드 12장) 함께 돌려준다 — 구버전 분석(이
+   * 마이그레이션 이전)이면 undefined. */
+  postprocess?: PosterPostprocessInfo;
+}
+
+/** 포스터 2차 후처리 결합 결과(가이드 12장) — TM만으로 분석한 뒤 applyTextPostprocess()가
+ * 채운다. OCR·임베딩을 아직 돌리지 않았으면(또는 TM이 실패했으면) undefined. */
+export interface PosterPostprocessInfo {
+  postprocessVersion: string;
+  /** 키워드 신호가 없었으면(걸린 키워드 없음) null. */
+  keywordsVersion: string | null;
+  /** 임베딩 신호가 없었으면(참조 세트 없음, 정리 후 텍스트 없음 등) null. */
+  embedVersion: string | null;
+  tmTopClass: string | null;
+  keywordTopClass: string | null;
+  embedTopClass: string | null;
+  finalTopClass: string | null;
+  signalAgreement: number | null;
+  matchedKeywords: string[];
+  /** 최종 순위 상위 3개(화면 표시 전용 — DB에는 final_top_class만 저장한다). */
+  finalRanking: RankedClass[];
 }
 
 export interface PosterAnalysisResult extends CachedPosterAnalysis {
@@ -37,6 +61,8 @@ export interface PosterAnalysisResult extends CachedPosterAnalysis {
   noServiceFieldClass: boolean;
   /** 같은 (활동, 해시, 모델, 전처리) 분석을 재사용했는지(가이드 3.5) — 다시 예측하지 않았다. */
   fromCache: boolean;
+  /** 가이드 12장 2차 후처리(키워드·임베딩 결합) 결과 — applyTextPostprocess()를 거치기 전에는 없다. */
+  postprocess?: PosterPostprocessInfo;
 }
 
 export interface FindCachedArgs {
@@ -110,6 +136,63 @@ export async function analyzePoster(deps: AnalyzePosterDeps): Promise<PosterAnal
   };
 }
 
+/**
+ * 포스터 2차 후처리(가이드 12장 P4) — TM 분석 결과에 키워드(2-A)·임베딩(2-B) 신호를 결합해
+ * 최종 판정을 다시 내린다. TM이 실패했거나 점수 자체가 없으면 결합할 신호가 없으므로 원본을
+ * 그대로 돌려준다. OCR·임베딩 둘 다 실패해도(ocrText가 비거나 embeddingReference가 null) TM
+ * 결과로 저장되도록 설계돼 있다 — combinePosterSignals가 글자 신호 없음을 그 자체로 처리한다.
+ */
+export async function applyTextPostprocess(args: {
+  analysis: PosterAnalysisResult;
+  ocrText: string;
+  title: string;
+  description: string;
+  embeddingReference: EmbeddingReference | null;
+  classFieldMap: ModelClassFieldMapRow[];
+  config: PosterClassifierConfig;
+}): Promise<PosterAnalysisResult> {
+  const { analysis, ocrText, title, description, embeddingReference, classFieldMap, config } = args;
+  if (analysis.status === "failed" || analysis.scores.length === 0) return analysis;
+
+  const fullText = [title, description, ocrText]
+    .map((s) => s?.trim() ?? "")
+    .filter((s) => s.length > 0)
+    .join(" ");
+
+  const keyword = classifyByKeywords(fullText);
+  const embedding = embeddingReference ? await classifyByEmbedding(fullText, embeddingReference) : null;
+
+  const combined = combinePosterSignals({ tmScores: analysis.scores, keyword, embedding, config });
+
+  const candidateInterestIds = combined.finalTopClass
+    ? resolveCandidateInterestIds(combined.finalTopClass, analysis.modelVersion, classFieldMap)
+    : [];
+  const noServiceFieldClass = combined.finalTopClass
+    ? classHasNoServiceField(combined.finalTopClass, analysis.modelVersion, classFieldMap)
+    : false;
+
+  return {
+    ...analysis,
+    status: combined.status,
+    topClass: combined.finalTopClass,
+    topScore: combined.finalTopScore,
+    candidateInterestIds,
+    noServiceFieldClass,
+    postprocess: {
+      postprocessVersion: POSTPROCESS_VERSION,
+      keywordsVersion: keyword ? KEYWORDS_VERSION : null,
+      embedVersion: embedding ? EMBED_VERSION : null,
+      tmTopClass: combined.tmTopClass,
+      keywordTopClass: combined.keywordTopClass,
+      embedTopClass: combined.embedTopClass,
+      finalTopClass: combined.finalTopClass,
+      signalAgreement: combined.signalAgreement,
+      matchedKeywords: combined.matchedKeywords,
+      finalRanking: combined.finalRanking,
+    },
+  };
+}
+
 /** 모델 로딩·이미지 디코드 자체가 실패했을 때(analyzePoster를 호출하기 전) 쓰는 결과 모양. */
 export function buildFailedAnalysisResult(args: {
   posterHash: string;
@@ -149,6 +232,7 @@ export interface PendingPosterAnalysis {
   margin: number | null;
   status: PosterAnalysisStatus;
   failureReason: PosterFailureReason | null;
+  postprocess?: PosterPostprocessInfo;
 }
 
 export function toPendingPosterAnalysis(result: PosterAnalysisResult): PendingPosterAnalysis {
@@ -162,6 +246,7 @@ export function toPendingPosterAnalysis(result: PosterAnalysisResult): PendingPo
     margin: result.margin,
     status: result.status,
     failureReason: result.failureReason,
+    postprocess: result.postprocess,
   };
 }
 

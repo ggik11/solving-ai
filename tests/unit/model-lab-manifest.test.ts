@@ -46,6 +46,14 @@ describe("parseManifestCsv (가이드 6.2)", () => {
     expect(errors[0].message).toContain("필수 컬럼");
   });
 
+  it("UTF-8 BOM으로 시작해도 정상 파싱한다(엑셀 저장 CSV 호환)", () => {
+    const csv = "﻿" + [HEADER, "posters/a.png,e001,,,,,IT_DATA,,train,"].join("\n");
+    const { rows, errors } = parseManifestCsv(csv);
+    expect(errors).toEqual([]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].imagePath).toBe("posters/a.png");
+  });
+
   it("split 값이 train/dev/test/ood가 아니면 그 행을 거부한다", () => {
     const csv = [HEADER, "posters/a.png,e001,,,,,IT_DATA,,unknown,"].join("\n");
     const { rows, errors } = parseManifestCsv(csv);

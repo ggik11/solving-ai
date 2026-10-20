@@ -67,7 +67,9 @@ export interface ManifestParseResult {
 }
 
 export function parseManifestCsv(csvText: string): ManifestParseResult {
-  const lines = csvText.split(/\r?\n/).filter((l) => l.trim() !== "");
+  // 엑셀 등에서 저장한 CSV는 UTF-8 BOM(U+FEFF)을 앞에 붙이는 경우가 많다 — 지우지 않으면 첫
+  // 헤더 열(image_path)이 "﻿image_path"가 되어 "필수 컬럼 없음"으로 전체가 거부된다.
+  const lines = csvText.replace(/^﻿/, "").split(/\r?\n/).filter((l) => l.trim() !== "");
   if (lines.length === 0) return { rows: [], errors: [{ line: 0, message: "빈 파일입니다." }] };
 
   const header = parseCsvLine(lines[0]).map((h) => h.trim());

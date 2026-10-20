@@ -38,6 +38,7 @@ function toTimestamp(value: string): string | null {
 export async function submitActivityAction(input: SubmitActivityInput): Promise<ActionResult> {
   const supabase = await createClient();
   const analysis = input.posterAnalysis;
+  const pp = analysis?.postprocess;
   const { data, error } = await supabase.rpc("submit_activity", {
     p_title: input.title,
     p_summary: input.summary || null,
@@ -63,6 +64,15 @@ export async function submitActivityAction(input: SubmitActivityInput): Promise<
     p_poster_margin: analysis?.margin ?? null,
     p_poster_status: analysis?.status ?? null,
     p_poster_failure_reason: analysis?.failureReason ?? null,
+    p_postprocess_version: pp?.postprocessVersion ?? null,
+    p_keywords_version: pp?.keywordsVersion ?? null,
+    p_embed_version: pp?.embedVersion ?? null,
+    p_tm_top_class: pp?.tmTopClass ?? null,
+    p_keyword_top_class: pp?.keywordTopClass ?? null,
+    p_embed_top_class: pp?.embedTopClass ?? null,
+    p_final_top_class: pp?.finalTopClass ?? null,
+    p_signal_agreement: pp?.signalAgreement ?? null,
+    p_matched_keywords: pp?.matchedKeywords ?? null,
   });
   if (error || !data) return { ok: false, error: friendlyError(error, "제보에 실패했습니다.") };
 

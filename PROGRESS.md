@@ -1223,3 +1223,58 @@ manifest 라벨 검사(가이드 6.2)가 "검사할 기준이 없음"으로 통�
   0.35 결합 비율과 "2개 이상 일치" 합의 규칙, `poster_analyses` 등 DB 스키마 변경, 관리자 검토
   화면에 신호별 일치 여부 표시. 전부 `docs/teachable-machine-integration.md` 12.2(P1~P6 표)에
   적어 뒀다.
+
+## 포스터 2차 후처리 P4: 키워드·임베딩·결합·DB·관리자 화면 (완료)
+
+- **범위:** `docs/teachable-machine-integration.md` 12장 그대로 — 2-A 키워드 규칙, 2-B 임베딩
+  분류, 결합·합의 규칙(P2~P4), `poster_analyses` 신호 컬럼과 세 저장 함수 확장, 관리자 화면
+  표시(P5). 값은 전부 학습용 사진 144장만 보고 고정했다(`datasets/keyword-review.md`,
+  2026-10-21 확정) — test 폴더는 이번 작업에서도 열어 보지 않았다.
+- **키워드(`src/lib/poster/keywordRules.ts`, `keywords-v1`):** `datasets/keywords-v1.json`
+  (7분야 × 239단어)을 Node 스크립트로 평탄화해 코드 배열로 옮기고, 원본 JSON과 1:1 대조하는
+  검증 스크립트로 개수·내용·순서가 전부 같은지 확인했다(수작업 전사로 생기는 오타를 피하려고
+  — 이전 작업에서 SHA-256 해시를 손으로 옮기다 마지막 한 글자를 반복해서 잘라먹은 적이 있어,
+  이번에는 처음부터 자동 생성·자동 대조로 했다). 한글은 공백 제거 텍스트에서 부분 문자열,
+  영문·숫자는 소문자+단어 경계로 찾는다.
+- **임베딩(`src/lib/poster/embeddingClassifier.ts`, `embed-v1`) + 참조 세트(`reference-v1`):**
+  `/admin/model-lab`에 "임베딩 참조 만들기" 섹션을 추가해 분야 설명문(7개) + 학습용 OCR
+  텍스트(144개, `datasets/ocr/*.csv`)를 임베딩하고 `reference-v1.json`(벡터만, 151개 항목,
+  1.7MB)을 만들었다 — `public/models/text-reference/`에 커밋했다(벡터만 있어 원문 유출 없음).
+  manifest.csv로 모든 OCR 행이 `split=train`인지 확인하고 아니면 통째로 거부하는 안전장치를
+  Playwright로 실제 관리자 화면을 띄워 검증했다.
+  **실제 버그를 두 개 더 찾아 고쳤다(둘 다 단위 테스트로는 안 잡히고 실제 브라우저 실행으로만
+  드러났다):** (1) `datasets/manifest.csv`(엑셀로 저장된 실제 파일)가 UTF-8 BOM으로 시작해
+  `parseManifestCsv`가 "image_path 컬럼 없음"으로 전체를 거부하고 있었다 — BOM을 제거하도록
+  고쳤다. (2) 참조 세트를 만들 때 학습용 OCR 텍스트 144개 + 설명문 7개를 한 번에 임베딩하니
+  `std::bad_alloc`(WASM 메모리 부족, 패딩이 배치 안 가장 긴 문장에 맞춰지기 때문)으로 전부
+  실패하고 있었다 — 16개씩 나눠 돌리고, 임베딩 전에 `cleanTextForEmbedding`으로 텍스트를
+  정리·1000자 제한하도록 고쳤다.
+- **결합(`src/lib/poster/combine.ts`, `postprocess-v1`):** TM 0.3/키워드 0.35/임베딩 0.35 가중합
+  (없는 신호는 빼고 재정규화), `CAMPUS_NOTICE` 최종 1위면 무조건 `needs_review`, 그 외 2개 이상
+  신호 일치 + 최종 점수 0.50 이상이면 `suggested`, 글자 신호가 전혀 없으면 기존
+  `judgePosterClassification`(0.80/0.20)을 그대로 쓰는 순수 함수.
+- **DB(`supabase/migrations/20261021010000_poster_postprocess.sql`, 신규):** `poster_analyses`에
+  9개 컬럼 추가(`postprocess_version`/`keywords_version`/`embed_version`/`tm_top_class`/
+  `keyword_top_class`/`embed_top_class`/`final_top_class`/`signal_agreement`/`matched_keywords`).
+  `record_poster_analysis`/`create_activity_with_fields`/`submit_activity` 세 함수 모두 옛
+  시그니처를 `drop function`으로 먼저 지우고 끝에 9개 선택 파라미터를 추가해 다시 만들었다
+  (20261013050000이 세운 관례 — EXECUTE 권한이 옛 시그니처에 남지 않게). 새 RPC
+  `lookup_org_field_history`(운영자 전용)도 추가했다. `supabase migration up`으로만 적용했다
+  (`db reset` 실행 안 함, 로컬 데이터 그대로 유지).
+- **화면 연결(`PosterClassifierPanel.tsx`):** TM 분석 뒤 포스터 원본으로 OCR을 돌리고
+  (`applyTextPostprocess`), 제목·설명이 있으면 OCR 텍스트 앞에 붙여 2-A·2-B 입력으로 쓴다.
+  결합 결과로 `status`/`topClass`/`candidateInterestIds`를 덮어쓰고, 최종 1~3위·점수, 신호별
+  1위, 일치 개수, 근거 키워드를 보여준다. OCR·임베딩이 실패해도(worker 로드 실패, 참조 세트
+  없음 등) 예외를 던지지 않으므로 TM 결과로 저장된다(`combinePosterSignals`의 글자 신호 없음
+  분기). 같은 주최 기관의 이전 확정 분야는 `lookup_org_field_history`로 조회해 참고 정보로만
+  보여주고(점수 계산 제외), `orgName`을 넘기지 않은 화면에서는 생략한다.
+- **검증:** 단위 테스트 신규 4개 파일(`poster-keyword-rules.test.ts` 9건, `poster-embedding-
+  classifier.test.ts` 14건, `poster-combine.test.ts` 8건, `model-lab-ocr-csv.test.ts` 9건) +
+  기존 `model-lab-manifest.test.ts`에 BOM 테스트 1건 추가. RLS 테스트
+  (`tests/rls/poster_classifier.test.ts`에 2차 후처리 필드 저장·범위 검증·`lookup_org_field_
+  history` 권한 테스트 추가, `tests/rls/atomic_field_confirmation.test.ts`에 `create_activity_
+  with_fields`의 2차 후처리 저장 테스트 추가, `tests/rls/execute_privileges.test.ts` 허용 목록을
+  새 함수 시그니처로 갱신). `npm test` 524/524 통과, `npm run build` 성공.
+- **의도적으로 남긴 것(P6 범위):** 결합 모델을 test 자료로 재평가해 TM 단독(31%/0.214)과
+  비교하고 기본 판정 경로를 바꿀지 결정하는 작업은 하지 않았다 — 비율·규칙을 test를 보기 전에
+  고정해 두는 것이 이번 작업의 목적이었다.

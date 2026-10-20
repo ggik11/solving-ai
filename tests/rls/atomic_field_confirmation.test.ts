@@ -88,6 +88,70 @@ describe("create_activity_with_fields — 관리자 등록 원자적 저장", ()
     expect(secondaryField.accepted_model_candidate).toBeNull();
   });
 
+  it("2차 후처리 필드(가이드 12장 P4)도 활동 생성과 한 번에 기록된다", async () => {
+    const asAdmin = await signInAs(TEST_USERS.admin.email);
+    const { data, error } = await asAdmin.rpc("create_activity_with_fields", {
+      p_title: "2차 후처리 저장 테스트",
+      p_summary: null,
+      p_description: null,
+      p_org_name: null,
+      p_source_url: null,
+      p_location_type: "offline",
+      p_region: null,
+      p_activity_type_id: null,
+      p_eligibility: null,
+      p_participation_mode: "both",
+      p_team_min_size: null,
+      p_team_max_size: null,
+      p_benefit: null,
+      p_apply_start_at: null,
+      p_apply_end_at: null,
+      p_activity_start_at: null,
+      p_activity_end_at: null,
+      p_status: "draft",
+      p_source_url_resolved: null,
+      p_apply_end_at_evidence: null,
+      p_weekly_hours: null,
+      p_eligibility_scope: "unknown",
+      p_eligible_major_ids: [],
+      p_primary_interest_id: IT_DATA,
+      p_secondary_interest_ids: [],
+      p_accepted_candidate_interest_ids: [IT_DATA],
+      p_poster_hash: "hash-atomic-postprocess",
+      p_model_version: "v1",
+      p_preprocessing_version: "pad-square-v1",
+      p_poster_scores: [{ classId: "IT_ENGINEERING", score: 0.6 }],
+      p_poster_top_class: "IT_ENGINEERING",
+      p_poster_top_score: 0.785,
+      p_poster_margin: 0.2,
+      p_poster_status: "suggested",
+      p_poster_failure_reason: null,
+      p_postprocess_version: "postprocess-v1",
+      p_keywords_version: "keywords-v1",
+      p_embed_version: "embed-v1",
+      p_tm_top_class: "DESIGN_MEDIA",
+      p_keyword_top_class: "IT_ENGINEERING",
+      p_embed_top_class: "IT_ENGINEERING",
+      p_final_top_class: "IT_ENGINEERING",
+      p_signal_agreement: 2,
+      p_matched_keywords: ["해커톤"],
+    });
+    expect(error).toBeNull();
+    activityId = data as string;
+
+    const { data: analysis } = await admin
+      .from("poster_analyses")
+      .select("postprocess_version, final_top_class, signal_agreement, matched_keywords")
+      .eq("activity_id", activityId)
+      .single();
+    expect(analysis).toEqual({
+      postprocess_version: "postprocess-v1",
+      final_top_class: "IT_ENGINEERING",
+      signal_agreement: 2,
+      matched_keywords: ["해커톤"],
+    });
+  });
+
   it("분석 없이(포스터 없이) 등록해도 활동과 분야는 정상적으로 확정된다", async () => {
     const asAdmin = await signInAs(TEST_USERS.admin.email);
     const { data, error } = await asAdmin.rpc("create_activity_with_fields", {

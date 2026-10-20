@@ -570,11 +570,11 @@ G4(6장, 실험 도구)로 돌린 파일럿 결과(`pilot-7-v1`, 분야별 표�
 
 | 단계 | 범위 | 상태 |
 |---|---|---|
-| **P1. 기반** | OCR(tesseract.js)·문장 임베딩(Transformers.js) 모델/언어 파일 준비 스크립트, 두 모듈을 브라우저에서 돌리는 최소 기능(`ocr.ts`/`textEmbedding.ts`/`textNormalize.ts`), `/admin/model-lab` 미리보기 화면. 키워드 사전·점수 결합·DB 변경은 하지 않는다. | **완료(이 절)** |
-| **P2. 키워드 사전** | 학습(train) 이미지의 OCR·제목·설명만으로 분야별 키워드 사전을 만든다(12.3 공정성 원칙 — test 이미지는 쓰지 않는다). 2-A 규칙 함수(순수 함수, 단위 테스트)를 추가한다. | 예정 |
-| **P3. 임베딩 기준 벡터** | 분야별 학습 자료 임베딩 평균(또는 대표 문장 임베딩)을 만들고, 코사인 유사도로 분야 후보를 매기는 순수 함수를 추가한다. | 예정 |
-| **P4. 결합·합의 규칙** | TM 0.3/키워드 0.35/임베딩 0.35 가중합과 "2개 이상 일치" 합의 규칙을 구현하고(순수 함수), 기존 `judgePosterClassification`과의 관계를 정리한다. | 예정 |
-| **P5. 저장·화면 연결** | `poster_analyses`에 OCR·키워드·임베딩 신호를 남길 컬럼(또는 별도 테이블)을 새 마이그레이션으로 추가하고, `PosterClassifierPanel`/관리자 검토 화면에 "어떤 신호가 일치했는지" 보여준다. | 예정 |
+| **P1. 기반** | OCR(tesseract.js)·문장 임베딩(Transformers.js) 모델/언어 파일 준비 스크립트, 두 모듈을 브라우저에서 돌리는 최소 기능(`ocr.ts`/`textEmbedding.ts`/`textNormalize.ts`), `/admin/model-lab` 미리보기 화면. 키워드 사전·점수 결합·DB 변경은 하지 않는다. | **완료** |
+| **P2. 키워드 사전** | 학습(train) 이미지의 OCR·제목·설명만으로 분야별 키워드 사전을 만든다(12.3 공정성 원칙 — test 이미지는 쓰지 않는다). 2-A 규칙 함수(순수 함수, 단위 테스트)를 추가한다. | **완료(12.5)** |
+| **P3. 임베딩 기준 벡터** | 분야별 학습 자료 임베딩 평균(또는 대표 문장 임베딩)을 만들고, 코사인 유사도로 분야 후보를 매기는 순수 함수를 추가한다. | **완료(12.5)** |
+| **P4. 결합·합의 규칙** | TM 0.3/키워드 0.35/임베딩 0.35 가중합과 "2개 이상 일치" 합의 규칙을 구현하고(순수 함수), 기존 `judgePosterClassification`과의 관계를 정리한다. | **완료(이 절, 12.5)** |
+| **P5. 저장·화면 연결** | `poster_analyses`에 OCR·키워드·임베딩 신호를 남길 컬럼(또는 별도 테이블)을 새 마이그레이션으로 추가하고, `PosterClassifierPanel`/관리자 검토 화면에 "어떤 신호가 일치했는지" 보여준다. | **완료(P4와 함께 진행, 12.6)** |
 | **P6. 평가·전환** | 결합 모델을 같은 test 자료로 재평가해 TM 단독(31%/0.214)과 비교하고, 개선이 확인되면 기본 판정 경로를 결합 모델로 전환한다(`docs/model-evaluation.md` 기록). | 예정 |
 
 ### 12.3 공정성 원칙
@@ -615,3 +615,56 @@ G4(6장, 실험 도구)로 돌린 파일럿 결과(`pilot-7-v1`, 분야별 표�
   않는다 — 실제 평가·개선은 P2 이후에서 브라우저 지원 범위를 다시 본다).
 - 받는 파일 전체 용량과 로딩·처리 시간 실측치는 `PROGRESS.md`의 "포스터 2차 후처리 P1" 절에
   기록한다(환경마다 달라질 수 있어 이 설계 문서에는 고정값을 적지 않는다).
+
+### 12.5 키워드(2-A)·임베딩(2-B) 규칙과 버전 (P2~P4)
+
+**아래 규칙·비율·가중치는 test 사진을 보기 전에 고정했다.** `datasets/keyword-review.md`에
+적은 대로 학습용 사진 144장의 OCR 결과와 라벨 규칙만 보고 만들었고(2026-10-21 확정), test
+폴더는 열어 보지 않았다. P6(평가) 전까지는 바꾸지 않는다(12.3 공정성 원칙).
+
+- **키워드 사전 — `keywords-v1`** (`src/lib/poster/keywordRules.ts`, `datasets/keywords-v1.json`
+  그대로). 분야 7개(`IT_ENGINEERING`/`BUSINESS_PLANNING`/`DESIGN_MEDIA`/`SOCIAL_ENVIRONMENT`/
+  `LAW_POLICY`/`CAMPUS_NOTICE`/`HOBBY_CULTURE`) × 가중치 3단계(강함 3/보통 2/약함 1), 총
+  239개 단어. 한글은 공백을 뺀 텍스트(`textNormalize`의 matchKey)에서 부분 문자열로 찾고,
+  영문·숫자는 소문자로 바꾼 뒤 단어 경계(`\b`)로 찾는다("AI"가 "mail" 안쪽에는 걸리지 않게).
+  같은 단어는 문서당 1번만 센다. 분야별 가중치 합을 전체 합으로 나눈 분포와 걸린 단어 목록을
+  돌려주고, 걸린 게 없으면 null — 그러면 2-A 신호 없이 TM·2-B만으로 결합한다.
+- **임베딩 참조 세트 — `reference-v1`** (`public/models/text-reference/reference-v1.json`,
+  `/admin/model-lab`의 "임베딩 참조 만들기" 섹션으로 만든다). 분야 설명문 7개
+  (`datasets/field-descriptions-v1.json`) + 학습용 포스터 OCR 텍스트 144개(`datasets/ocr/*.csv`,
+  파일명이 라벨) = 총 151개 벡터. 벡터만 저장하고 원문 텍스트는 넣지 않아 커밋해도 된다(라이선스·
+  저작권 문제 없음). 만들 때 `datasets/manifest.csv`로 각 OCR 행이 실제로 `split=train`인지
+  확인하고, train이 아니거나 manifest에 없는 행이 하나라도 섞여 있으면 전체를 거부한다 — test
+  사진이 참조 세트에 들어가는 것을 막는 안전장치다. 임베딩 입력은 한글 2글자 이상·영문 3글자
+  이상 단어만 남기고 1000자에서 자른다(`cleanTextForEmbedding`) — OCR이 섞어 내는 한 글자짜리
+  잡음을 거른다. 분야별 참조 벡터와의 코사인 유사도 **상위 3개 평균**을 "원점수"로 쓰고,
+  `원점수/0.05`에 softmax를 적용해 분포를 만든다 — 분모(0.05)가 작을수록 1위 분야에 점수가
+  몰린다. 참조 세트 파일이 없으면 2-B 없이(TM·2-A만으로) 동작한다.
+- **결합 — `postprocess-v1`** (`src/lib/poster/combine.ts`, 코드 상수로 고정). 가중치 TM 0.3 /
+  키워드 0.35 / 임베딩 0.35 — 없는 신호는 빼고 남은 가중치를 합 1로 다시 맞춘다(예: 임베딩이
+  없으면 TM 0.3/0.65, 키워드 0.35/0.65). `CAMPUS_NOTICE`가 최종 1위면 분야를 제안하지 않고
+  `needs_review`로 둔다(서비스 분야가 없는 클래스, 가이드 3.6 보완). 그 외에는 **있는 신호 중
+  2개 이상의 1위가 최종 1위와 같고, 최종 1위 점수가 0.50 이상**이어야 `suggested`다. 글자
+  신호(키워드·임베딩)가 둘 다 없으면 기존 TM 단독 판정(`judgePosterClassification`,
+  top≥0.80·margin≥0.20)을 그대로 쓴다 — OCR·임베딩이 실패해도 TM 결과로 저장된다.
+- 활동 제목·설명이 있으면 OCR 텍스트 앞에 붙여 2-A·2-B 입력으로 함께 쓴다(`PosterClassifierPanel`).
+
+### 12.6 DB·화면 연결 (P5)
+
+마이그레이션 `20261021010000_poster_postprocess.sql`(신규, 기존 마이그레이션은 수정하지 않음)이
+`poster_analyses`에 `postprocess_version`/`keywords_version`/`embed_version`/`tm_top_class`/
+`keyword_top_class`/`embed_top_class`/`final_top_class`/`signal_agreement`/`matched_keywords`
+(걸린 키워드 **단어 목록만** — OCR 원문이나 포스터 이미지는 여전히 저장하지 않는다, 가이드 0장
+원칙 그대로)를 추가했다. `record_poster_analysis`/`create_activity_with_fields`/
+`submit_activity` 세 함수 모두 끝에 선택 파라미터로 이 필드들을 받도록 확장했다(옛 시그니처는
+명시적으로 지운 뒤 다시 만들었다 — 20261013050000이 세운 관례 그대로, EXECUTE 권한이 옛
+시그니처에 남지 않는다). 날짜·지원 자격·원문 링크 같은 사실관계는 여전히 사람이 원문으로 확인한다
+— 이 마이그레이션은 "분야 후보가 어떻게 나왔는지"에 대한 신호만 남긴다.
+
+`PosterClassifierPanel`이 TM 분석 뒤 포스터 원본 이미지로 OCR을 돌리고(`applyTextPostprocess`),
+결합 결과로 `status`/`topClass`/`candidateInterestIds`를 덮어쓴다. 화면에는 최종 1~3위와 점수,
+신호별 1위(TM/키워드/임베딩), 일치 개수, 근거 키워드를 보여준다. 새 RPC
+`lookup_org_field_history`(운영자 전용)는 같은 주최 기관(`activities.org_name`)의 활동 중 이미
+확정된 분야를 건수와 함께 돌려주고, "같은 기관의 이전 확정: ○○ (2건)"으로 **참고 정보로만**
+보여준다 — 점수 계산에는 쓰지 않는다. 기관 필드(`orgName`)를 넘기지 않은 화면에서는 이 부분을
+그냥 생략한다.

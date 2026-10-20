@@ -173,6 +173,9 @@ export function ActivityForm({
         onAcceptCandidate={mode === "edit" ? onFieldCandidateAccept : (interestId) => handleAcceptCandidate(interestId)}
         onAnalyzed={mode === "create" ? setPendingAnalysis : undefined}
         candidateHint={mode === "create" ? "후보를 누르면 바로 아래 분야 선택 칸에 들어가요 — 등록 버튼을 눌러야 확정돼요." : undefined}
+        activityTitle={form.title}
+        activityDescription={form.description}
+        orgName={form.orgName}
       />
       {mode === "create" && (
         <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3">

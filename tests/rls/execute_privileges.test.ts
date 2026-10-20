@@ -29,7 +29,7 @@ const ALLOWLIST: Record<string, readonly ("anon" | "authenticated")[]> = {
   "cancel_matching_queue(uuid)": ["authenticated"],
   "check_url_fetch_rate_limit()": ["authenticated"],
   "confirm_party(uuid)": ["authenticated"],
-  "create_activity_with_fields(text, text, text, text, text, text, text, uuid, text, text, integer, integer, text, timestamp with time zone, timestamp with time zone, timestamp with time zone, timestamp with time zone, text, text, text, numeric, text, uuid[], uuid, uuid[], uuid[], text, text, text, jsonb, text, numeric, numeric, text, text)":
+  "create_activity_with_fields(text, text, text, text, text, text, text, uuid, text, text, integer, integer, text, timestamp with time zone, timestamp with time zone, timestamp with time zone, timestamp with time zone, text, text, text, numeric, text, uuid[], uuid, uuid[], uuid[], text, text, text, jsonb, text, numeric, numeric, text, text, text, text, text, text, text, text, text, integer, jsonb)":
     ["authenticated"],
   "create_party(uuid, text, text, text, timestamp with time zone, jsonb, text)": ["authenticated"],
   "create_report(text, uuid, text, text)": ["authenticated"],
@@ -41,17 +41,19 @@ const ALLOWLIST: Record<string, readonly ("anon" | "authenticated")[]> = {
   "join_matching_queue(uuid, uuid, text[], boolean, boolean)": ["authenticated"],
   "leave_party(uuid)": ["authenticated"],
   "list_my_chat_rooms()": ["authenticated"],
+  "lookup_org_field_history(text)": ["authenticated"],
   "mark_all_notifications_read()": ["authenticated"],
   "mark_chat_read(uuid, uuid)": ["authenticated"],
   "mark_notification_read(uuid)": ["authenticated"],
-  "record_poster_analysis(uuid, text, text, text, jsonb, text, numeric, numeric, text, text)": ["authenticated"],
+  "record_poster_analysis(uuid, text, text, text, jsonb, text, numeric, numeric, text, text, text, text, text, text, text, text, text, integer, jsonb)":
+    ["authenticated"],
   "register_classifier_model(text, uuid, text[])": ["authenticated"],
   "reject_activity_submission(uuid, text)": ["authenticated"],
   "reject_application(uuid)": ["authenticated"],
   "reopen_party(uuid)": ["authenticated"],
   "respond_to_match_proposal(uuid, boolean)": ["authenticated"],
   "send_chat_message(uuid, text, text)": ["authenticated"],
-  "submit_activity(text, text, text, text, text, text, text, text, timestamp with time zone, timestamp with time zone, timestamp with time zone, timestamp with time zone, text, text, uuid, uuid[], uuid[], text, text, text, jsonb, text, numeric, numeric, text, text)":
+  "submit_activity(text, text, text, text, text, text, text, text, timestamp with time zone, timestamp with time zone, timestamp with time zone, timestamp with time zone, text, text, uuid, uuid[], uuid[], text, text, text, jsonb, text, numeric, numeric, text, text, text, text, text, text, text, text, text, integer, jsonb)":
     ["authenticated"],
   "suspend_account(uuid, text)": ["authenticated"],
   "unsuspend_account(uuid)": ["authenticated"],

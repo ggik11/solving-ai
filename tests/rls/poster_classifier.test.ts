@@ -252,6 +252,157 @@ describe("record_poster_analysis / find_cached_poster_analysis", () => {
   });
 });
 
+describe("record_poster_analysis — 2차 후처리 필드(가이드 12장 P4)", () => {
+  const admin = createAdminClient();
+  let activityId: string | null = null;
+
+  afterEach(async () => {
+    if (activityId) {
+      await admin.from("activities").delete().eq("id", activityId);
+      activityId = null;
+    }
+  });
+
+  it("postprocess_version 등 결합 신호 필드를 함께 기록하고 그대로 조회된다", async () => {
+    const asStudent1 = await signInAs(TEST_USERS.student1.email);
+    activityId = await createTestActivity(admin, { created_by: TEST_USERS.student1.id });
+
+    const { data: analysisId, error } = await asStudent1.rpc("record_poster_analysis", {
+      p_activity_id: activityId,
+      p_poster_hash: "hash-postprocess",
+      p_model_version: "v1",
+      p_preprocessing_version: "pad-square-v1",
+      p_scores: [{ classId: "IT_ENGINEERING", score: 0.6 }],
+      p_top_class: "IT_ENGINEERING",
+      p_top_score: 0.785,
+      p_margin: 0.2,
+      p_status: "suggested",
+      p_failure_reason: null,
+      p_postprocess_version: "postprocess-v1",
+      p_keywords_version: "keywords-v1",
+      p_embed_version: "embed-v1",
+      p_tm_top_class: "DESIGN_MEDIA",
+      p_keyword_top_class: "IT_ENGINEERING",
+      p_embed_top_class: "IT_ENGINEERING",
+      p_final_top_class: "IT_ENGINEERING",
+      p_signal_agreement: 2,
+      p_matched_keywords: ["해커톤", "AI"],
+    });
+    expect(error).toBeNull();
+    expect(analysisId).toBeTruthy();
+
+    const { data: row } = await asStudent1
+      .from("poster_analyses")
+      .select(
+        "postprocess_version, keywords_version, embed_version, tm_top_class, keyword_top_class, embed_top_class, final_top_class, signal_agreement, matched_keywords"
+      )
+      .eq("id", analysisId as string)
+      .single();
+    expect(row).toEqual({
+      postprocess_version: "postprocess-v1",
+      keywords_version: "keywords-v1",
+      embed_version: "embed-v1",
+      tm_top_class: "DESIGN_MEDIA",
+      keyword_top_class: "IT_ENGINEERING",
+      embed_top_class: "IT_ENGINEERING",
+      final_top_class: "IT_ENGINEERING",
+      signal_agreement: 2,
+      matched_keywords: ["해커톤", "AI"],
+    });
+  });
+
+  it("2차 후처리 필드를 생략하면 전부 null로 남는다(구버전 호출과 호환)", async () => {
+    const asStudent1 = await signInAs(TEST_USERS.student1.email);
+    activityId = await createTestActivity(admin, { created_by: TEST_USERS.student1.id });
+
+    const { data: analysisId, error } = await asStudent1.rpc("record_poster_analysis", {
+      p_activity_id: activityId,
+      p_poster_hash: "hash-no-postprocess",
+      p_model_version: "v1",
+      p_preprocessing_version: "pad-square-v1",
+      p_scores: [{ classId: "IT_DATA", score: 0.9 }],
+      p_top_class: "IT_DATA",
+      p_top_score: 0.9,
+      p_margin: 0.8,
+      p_status: "suggested",
+      p_failure_reason: null,
+    });
+    expect(error).toBeNull();
+
+    const { data: row } = await asStudent1
+      .from("poster_analyses")
+      .select("postprocess_version, final_top_class, signal_agreement, matched_keywords")
+      .eq("id", analysisId as string)
+      .single();
+    expect(row).toEqual({ postprocess_version: null, final_top_class: null, signal_agreement: null, matched_keywords: null });
+  });
+
+  it("signal_agreement가 0~3을 벗어나면 거부한다", async () => {
+    const asStudent1 = await signInAs(TEST_USERS.student1.email);
+    activityId = await createTestActivity(admin, { created_by: TEST_USERS.student1.id });
+
+    const { error } = await asStudent1.rpc("record_poster_analysis", {
+      p_activity_id: activityId,
+      p_poster_hash: "hash-bad-agreement",
+      p_model_version: "v1",
+      p_preprocessing_version: "pad-square-v1",
+      p_scores: [{ classId: "IT_DATA", score: 0.9 }],
+      p_top_class: "IT_DATA",
+      p_top_score: 0.9,
+      p_margin: 0.8,
+      p_status: "suggested",
+      p_failure_reason: null,
+      p_signal_agreement: 4,
+    });
+    expect(error).not.toBeNull();
+    expect(error?.message).toContain("INVALID_SIGNAL_AGREEMENT");
+  });
+});
+
+describe("lookup_org_field_history — 같은 기관의 이전 확정 분야(참고용, 가이드 12장 5번)", () => {
+  const admin = createAdminClient();
+  const orgName = `테스트재단-${Date.now()}`;
+  let activityIds: string[] = [];
+
+  afterEach(async () => {
+    for (const id of activityIds) {
+      await admin.from("activities").delete().eq("id", id);
+    }
+    activityIds = [];
+  });
+
+  it("운영자는 같은 기관의 확정 분야를 건수와 함께 조회할 수 있다", async () => {
+    const a1 = await createTestActivity(admin, { org_name: orgName });
+    const a2 = await createTestActivity(admin, { org_name: orgName });
+    activityIds = [a1, a2];
+
+    const SOCIAL_WELFARE = "c0000000-0000-0000-0000-000000000006";
+    await admin.from("activity_fields").insert([
+      { activity_id: a1, interest_id: SOCIAL_WELFARE, role: "primary", source: "manual", confirmed_by: TEST_USERS.admin.id },
+      { activity_id: a2, interest_id: SOCIAL_WELFARE, role: "primary", source: "manual", confirmed_by: TEST_USERS.admin.id },
+    ]);
+
+    const asAdmin = await signInAs(TEST_USERS.admin.email);
+    const { data, error } = await asAdmin.rpc("lookup_org_field_history", { p_org_name: orgName });
+    expect(error).toBeNull();
+    expect(data).toEqual([{ interest_id: SOCIAL_WELFARE, field_count: 2 }]);
+  });
+
+  it("일반 사용자는 조회할 수 없다", async () => {
+    const asStudent1 = await signInAs(TEST_USERS.student1.email);
+    const { error } = await asStudent1.rpc("lookup_org_field_history", { p_org_name: orgName });
+    expect(error).not.toBeNull();
+    expect(error?.message).toContain("NOT_ADMIN");
+  });
+
+  it("일치하는 기관이 없으면 빈 배열이다", async () => {
+    const asAdmin = await signInAs(TEST_USERS.admin.email);
+    const { data, error } = await asAdmin.rpc("lookup_org_field_history", { p_org_name: `없는-기관-${Date.now()}` });
+    expect(error).toBeNull();
+    expect(data).toEqual([]);
+  });
+});
+
 describe("activity_fields.analysis_id — 재분석이 확정값을 바꾸지 않는다(가이드 체크리스트 8번)", () => {
   const admin = createAdminClient();
   let activityId: string | null = null;

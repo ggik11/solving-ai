@@ -131,6 +131,9 @@ export function SubmitActivityForm({
         onAcceptCandidate={handleAcceptCandidate}
         onAnalyzed={setPendingAnalysis}
         candidateHint="후보를 누르면 바로 아래 분야 제안 칸에 들어가요 — 확정은 관리자가 검토하며 직접 해요."
+        activityTitle={title}
+        activityDescription={description}
+        orgName={orgName}
       />
       <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
         <h3 className="mb-2 text-sm font-semibold text-[var(--color-muted-foreground)]">분야 제안 (참고용)</h3>

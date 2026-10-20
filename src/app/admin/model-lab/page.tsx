@@ -9,6 +9,7 @@ import { ManifestCheckSection } from "./ManifestCheckSection";
 import { ModelEvaluationSection } from "./ModelEvaluationSection";
 import { ModelRegistrationSection, type ExistingClassifierRegistration } from "./ModelRegistrationSection";
 import { TextAiPreviewSection } from "./TextAiPreviewSection";
+import { EmbeddingReferenceBuilderSection } from "./EmbeddingReferenceBuilderSection";
 
 interface RegistrationRowDb {
   model_version: string;
@@ -65,6 +66,7 @@ export default async function ModelLabPage() {
         />
         <ModelEvaluationSection posterConfig={posterConfig} isModelRegistered={existingRegistration != null} />
         <TextAiPreviewSection aiAssetsReady={aiAssetsStatus.ocrReady && aiAssetsStatus.embeddingReady} />
+        {aiAssetsStatus.embeddingReady && <EmbeddingReferenceBuilderSection />}
       </div>
     </PageContainer>
   );
