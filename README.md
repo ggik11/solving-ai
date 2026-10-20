@@ -15,6 +15,7 @@
 ```bash
 npm install
 cp .env.example .env.local   # 아래 "로컬 Supabase 띄우기" 실행 후 값 채우기
+npm run fetch:ai-assets      # /admin/model-lab의 OCR·문장 임베딩 미리보기에 필요한 파일을 받는다(최초 1회, docs 8.4 참고)
 ```
 
 ## 로컬 Supabase 띄우기

@@ -16,17 +16,23 @@
     "db:reset": "supabase db reset",
     "worker:match": "node scripts/run-match-worker.mjs",
     "worker:link-check": "node scripts/run-link-check-worker.mjs",
-    "eval:recommend": "tsx scripts/eval-recommend.ts"
+    "eval:recommend": "tsx scripts/eval-recommend.ts",
+    "fetch:ai-assets": "node scripts/fetch-ai-assets.mjs"
   },
   "dependencies": {
+    "@huggingface/transformers": "4.3.0",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.2",
     "@teachablemachine/image": "0.8.5",
     "@tensorflow/tfjs": "1.3.1",
+    "@tesseract.js-data/eng": "1.0.0",
+    "@tesseract.js-data/kor": "1.0.0",
     "fflate": "^0.8.3",
     "next": "16.3.8",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "tesseract.js": "7.0.0",
+    "tesseract.js-core": "7.0.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

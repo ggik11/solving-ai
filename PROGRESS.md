@@ -1170,3 +1170,56 @@ manifest 라벨 검사(가이드 6.2)가 "검사할 기준이 없음"으로 통�
   `(model_version, class_id, interest_id=null)` 중복 삽입이 유니크 제약으로 막히는지(`NULLS NOT
   DISTINCT` 검증). E2E 스펙 주석을 pilot-7-v1 기준으로 갱신했다(동작 자체는 이미 class_set_id를
   명시로 골라 영향 없음). `npm test` 전체 통과, `npm run build` 성공(아래 검증 섹션 참조).
+
+## 포스터 2차 후처리 P1: OCR·문장 임베딩 기반 (완료)
+
+- **배경:** `docs/teachable-machine-integration.md`에 새 12장("2차 후처리")을 추가했다 —
+  원 요청 번호는 "8장"이었지만, 이 문서의 기존 8장(완료 체크리스트)·9장(구현 작업 단위, G1~G4)이
+  마이그레이션·테스트·이 문서 전역에서 "9장 G1"/"8장 체크리스트" 형태로 수십 곳에 인용되고 있어
+  번호를 밀어내면 그 인용이 전부 틀어진다. 기존 번호는 그대로 두고 새 절을 12장으로 추가했다(문서
+  상단에 번호 메모 남김). 이번 단계(P1)는 OCR·문장 임베딩을 브라우저에서 돌리는 **기반**만
+  만든다 — 키워드 사전·점수 결합·DB 변경은 다음 단계(P2~)로 미뤘다.
+- **모델/파일 준비(`scripts/fetch-ai-assets.mjs`, 신규):** OCR(tesseract.js worker/core +
+  kor·eng 언어 데이터)은 전부 npm 패키지(`tesseract.js@7.0.0`, `tesseract.js-core@7.0.0`,
+  `@tesseract.js-data/{eng,kor}@1.0.0`)로 고정해 두고, 이 스크립트는 **새로 CDN에서 받지 않고**
+  이미 `npm install`이 받아 둔 `node_modules`에서 `public/ocr/`로 복사만 한다. 문장 임베딩
+  (`Xenova/multilingual-e5-small`, quantized ONNX)은 npm 패키지가 없어 Hugging Face Hub에서
+  실제로 받되, main 브랜치가 아니라 고정 커밋(`761b726dd34fb83930e26aab4e9ac3899aa1fa78`)을
+  가리킨다. onnxruntime-web의 WASM 런타임도 `@huggingface/transformers`가 기본값으로 jsDelivr
+  CDN을 쓰려고 하는 것을 막기 위해 node_modules에서 복사해 로컬 경로로 고정했다. 받은 파일은
+  전부 SHA-256 체크섬을 검증하고, 이미 올바른 파일이 있으면 건너뛴다(재실행 안전). 받는
+  폴더(`public/ocr/`, `public/models/text-embedding/`)는 `.gitignore`에 추가했다. 전체 용량은
+  **약 166.5MB**(OCR 약 24.9MB + onnxruntime-web WASM 약 14MB + 임베딩 모델 약 128MB)다.
+- **임베딩 모델 선택 — `Xenova/multilingual-e5-small`(MIT):** 비교 후보
+  `Xenova/paraphrase-multilingual-MiniLM-L12-v2`(Apache-2.0)도 한국어를 지원하고 양자화 ONNX
+  크기가 거의 같아(약 112.8MB로 동일 수준) 둘 다 쓸 수 있었지만, 검색·유사도 특화로 설계된 e5
+  계열을 포스터 텍스트 ↔ 분야 대표 문장 유사도 비교라는 이번 쓰임에 더 맞다고 보고 선택했다.
+- **버그를 실제 브라우저 실행으로 발견·수정:** `src/lib/poster/textEmbedding.ts`를 처음 짰을 때
+  단위 테스트(라이브러리를 목으로 바꿈)는 전부 통과했지만, Playwright로 실제 `/admin/model-lab`을
+  관리자로 로그인해 돌려보니 임베딩이 전부 조용히 실패하고 있었다(`embedTexts`가 null을 반환,
+  하지만 호출부는 예외를 던지지 않으므로 화면에는 "실패"로 보이지 않고 그냥 0ms에 가깝게 끝나는
+  것처럼 보였다). 원인은 `@huggingface/transformers`의 `env.allowLocalModels`가 **브라우저
+  환경에서는 기본값이 false**라는 점이었다(Node 등에서는 기본 true) — `allowRemoteModels=false`만
+  설정하고 `allowLocalModels=true`를 빠뜨리면 "로컬도 원격도 둘 다 꺼짐" 오류가 난다. 코드와
+  단위 테스트(목의 초기 상태) 모두에 `allowLocalModels` 설정/검증을 추가해 고쳤다 — **단위
+  테스트만으로는 잡히지 않았던 버그**라, 커밋 전에 실제 브라우저로 한 번 돌려본 것이 아니었다면
+  이 상태로 나갔을 것이다.
+- **실측(Playwright, 관리자 로그인 후 `/admin/model-lab`에서 실제 포스터 이미지로 측정, 로컬
+  Chromium·CPU WASM 기준 — 환경에 따라 달라질 수 있다):**
+  - 임베딩 모델 로딩: 약 1.4~1.5초(최초 1회, 이후 재사용).
+  - OCR: 최초 호출(= tesseract.js worker 기동 포함) 약 3.0초, 이후 이미지당 약 0.4~2.9초(이미지
+    안의 글자량에 따라 달라짐 — 글자가 적은 포스터는 0.4초대까지도 나왔다).
+  - 임베딩 추론: 최초 호출(워밍업 포함) 약 1.8초, 이후 이미지당 약 0.3~0.4초.
+  - 실제 포스터(`pictures/train/BUSINESS_PLANNING`, `pictures/train/IT_ENGINEERING`의 샘플
+    4장)로 OCR이 한글·영문 글자를 실제로 읽어내는 것을 확인했다(필기체·저해상도 포스터는 글자가
+    많이 깨졌지만 핵심 키워드는 섞여 나왔다 — 2-A 키워드 규칙 설계 시 고려할 부분).
+- **검증:** 단위 테스트 신규 3개 파일(`tests/unit/poster-ocr.test.ts` 6건 — 성공/실패/타임아웃/
+  재사용/정리, `tests/unit/poster-text-embedding.test.ts` 13건 — 성공/실패/재시도/모델 재사용/
+  cosineSimilarity 5건, `tests/unit/poster-text-normalize.test.ts` 5건) 모두 라이브러리를
+  목으로 바꿔 검증한다(실제 모델/워커를 띄우지 않음). `npm test` 475/475 통과, `npm run build`
+  성공. 로컬 Supabase DB는 이번 작업에서 건드리지 않았다(`supabase db reset` 실행 안 함, 스키마
+  변경 없음).
+- **의도적으로 남긴 것(P2~ 범위):** 키워드 사전, 임베딩 기준 벡터, TM 0.3/키워드 0.35/임베딩
+  0.35 결합 비율과 "2개 이상 일치" 합의 규칙, `poster_analyses` 등 DB 스키마 변경, 관리자 검토
+  화면에 신호별 일치 여부 표시. 전부 `docs/teachable-machine-integration.md` 12.2(P1~P6 표)에
+  적어 뒀다.

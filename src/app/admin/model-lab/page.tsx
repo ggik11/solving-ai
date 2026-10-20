@@ -3,10 +3,12 @@ import { PageContainer } from "@/components/PageContainer";
 import { loadPosterClassifierConfig } from "@/lib/poster/query";
 import { loadClassifierClassSets } from "@/lib/modelLab/classSets";
 import { loadPosterModelMetadataFromDisk } from "@/lib/modelLab/modelMetadata";
+import { loadAiAssetsStatus } from "@/lib/modelLab/aiAssetsStatus";
 import { ImagePreprocessSection } from "./ImagePreprocessSection";
 import { ManifestCheckSection } from "./ManifestCheckSection";
 import { ModelEvaluationSection } from "./ModelEvaluationSection";
 import { ModelRegistrationSection, type ExistingClassifierRegistration } from "./ModelRegistrationSection";
+import { TextAiPreviewSection } from "./TextAiPreviewSection";
 
 interface RegistrationRowDb {
   model_version: string;
@@ -22,9 +24,10 @@ interface RegistrationRowDb {
  */
 export default async function ModelLabPage() {
   const supabase = await createClient();
-  const [posterConfig, classifierClassSets] = await Promise.all([
+  const [posterConfig, classifierClassSets, aiAssetsStatus] = await Promise.all([
     loadPosterClassifierConfig(supabase),
     loadClassifierClassSets(supabase),
+    loadAiAssetsStatus(),
   ]);
   const metadata = await loadPosterModelMetadataFromDisk(posterConfig.modelPath);
 
@@ -61,6 +64,7 @@ export default async function ModelLabPage() {
           existingRegistration={existingRegistration}
         />
         <ModelEvaluationSection posterConfig={posterConfig} isModelRegistered={existingRegistration != null} />
+        <TextAiPreviewSection aiAssetsReady={aiAssetsStatus.ocrReady && aiAssetsStatus.embeddingReady} />
       </div>
     </PageContainer>
   );

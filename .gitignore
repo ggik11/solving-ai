@@ -57,3 +57,8 @@ supabase/.temp
 
 # 학습용 포스터 원본(저작권·용량 문제로 커밋하지 않음)
 /pictures/
+
+# 포스터 2차 후처리(가이드 8장, P1)용 OCR·문장 임베딩 파일 — npm run fetch:ai-assets가
+# node_modules 복사·Hugging Face 다운로드로 채운다(용량이 커서 커밋하지 않는다).
+/public/ocr/
+/public/models/text-embedding/
