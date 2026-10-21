@@ -1,0 +1,209 @@
+{
+  "modelVersion": "2026-10-20T14:55:07.142Z",
+  "preprocessingVersion": "pad-square-v1",
+  "measuredAt": "2026-10-20T15:05:31.401Z",
+  "accuracy": {
+    "correct": 11,
+    "total": 35,
+    "accuracy": 0.3142857142857143
+  },
+  "majorityBaseline": {
+    "majorityLabel": "DESIGN_MEDIA",
+    "accuracy": 0.22857142857142856
+  },
+  "macroF1": 0.21405228758169934,
+  "classMetrics": [
+    {
+      "classId": "BUSINESS_PLANNING",
+      "support": 5,
+      "precision": 0,
+      "recall": 0,
+      "f1": 0
+    },
+    {
+      "classId": "CAMPUS_NOTICE",
+      "support": 2,
+      "precision": 0,
+      "recall": 0,
+      "f1": 0
+    },
+    {
+      "classId": "DESIGN_MEDIA",
+      "support": 8,
+      "precision": 0.3,
+      "recall": 0.375,
+      "f1": 0.33333333333333326
+    },
+    {
+      "classId": "HOBBY_CULTURE",
+      "support": 4,
+      "precision": 0.4,
+      "recall": 0.5,
+      "f1": 0.4444444444444445
+    },
+    {
+      "classId": "IT_ENGINEERING",
+      "support": 7,
+      "precision": 0.4,
+      "recall": 0.5714285714285714,
+      "f1": 0.47058823529411764
+    },
+    {
+      "classId": "LAW_POLICY",
+      "support": 2,
+      "precision": 0,
+      "recall": 0,
+      "f1": 0
+    },
+    {
+      "classId": "SOCIAL_ENVIRONMENT",
+      "support": 7,
+      "precision": 0.2222222222222222,
+      "recall": 0.2857142857142857,
+      "f1": 0.25
+    }
+  ],
+  "confusionMatrix": {
+    "classes": [
+      "BUSINESS_PLANNING",
+      "CAMPUS_NOTICE",
+      "DESIGN_MEDIA",
+      "HOBBY_CULTURE",
+      "IT_ENGINEERING",
+      "LAW_POLICY",
+      "SOCIAL_ENVIRONMENT"
+    ],
+    "matrix": {
+      "BUSINESS_PLANNING": {
+        "IT_ENGINEERING": 2,
+        "DESIGN_MEDIA": 2,
+        "SOCIAL_ENVIRONMENT": 1
+      },
+      "CAMPUS_NOTICE": {
+        "BUSINESS_PLANNING": 1,
+        "IT_ENGINEERING": 1
+      },
+      "DESIGN_MEDIA": {
+        "IT_ENGINEERING": 1,
+        "DESIGN_MEDIA": 3,
+        "SOCIAL_ENVIRONMENT": 4
+      },
+      "HOBBY_CULTURE": {
+        "DESIGN_MEDIA": 2,
+        "HOBBY_CULTURE": 2
+      },
+      "IT_ENGINEERING": {
+        "SOCIAL_ENVIRONMENT": 1,
+        "HOBBY_CULTURE": 1,
+        "IT_ENGINEERING": 4,
+        "DESIGN_MEDIA": 1
+      },
+      "LAW_POLICY": {
+        "IT_ENGINEERING": 1,
+        "SOCIAL_ENVIRONMENT": 1
+      },
+      "SOCIAL_ENVIRONMENT": {
+        "HOBBY_CULTURE": 2,
+        "IT_ENGINEERING": 1,
+        "SOCIAL_ENVIRONMENT": 2,
+        "DESIGN_MEDIA": 2
+      }
+    }
+  },
+  "thresholdSweep": [
+    {
+      "minTopScore": 0.6,
+      "minMargin": 0.1,
+      "passRate": 0.6,
+      "accuracyAmongPassed": 0.42857142857142855,
+      "passedCount": 21
+    },
+    {
+      "minTopScore": 0.6,
+      "minMargin": 0.2,
+      "passRate": 0.6,
+      "accuracyAmongPassed": 0.42857142857142855,
+      "passedCount": 21
+    },
+    {
+      "minTopScore": 0.6,
+      "minMargin": 0.3,
+      "passRate": 0.6,
+      "accuracyAmongPassed": 0.42857142857142855,
+      "passedCount": 21
+    },
+    {
+      "minTopScore": 0.7,
+      "minMargin": 0.1,
+      "passRate": 0.4,
+      "accuracyAmongPassed": 0.5,
+      "passedCount": 14
+    },
+    {
+      "minTopScore": 0.7,
+      "minMargin": 0.2,
+      "passRate": 0.4,
+      "accuracyAmongPassed": 0.5,
+      "passedCount": 14
+    },
+    {
+      "minTopScore": 0.7,
+      "minMargin": 0.3,
+      "passRate": 0.4,
+      "accuracyAmongPassed": 0.5,
+      "passedCount": 14
+    },
+    {
+      "minTopScore": 0.8,
+      "minMargin": 0.1,
+      "passRate": 0.34285714285714286,
+      "accuracyAmongPassed": 0.5,
+      "passedCount": 12
+    },
+    {
+      "minTopScore": 0.8,
+      "minMargin": 0.2,
+      "passRate": 0.34285714285714286,
+      "accuracyAmongPassed": 0.5,
+      "passedCount": 12
+    },
+    {
+      "minTopScore": 0.8,
+      "minMargin": 0.3,
+      "passRate": 0.34285714285714286,
+      "accuracyAmongPassed": 0.5,
+      "passedCount": 12
+    },
+    {
+      "minTopScore": 0.9,
+      "minMargin": 0.1,
+      "passRate": 0.2,
+      "accuracyAmongPassed": 0.5714285714285714,
+      "passedCount": 7
+    },
+    {
+      "minTopScore": 0.9,
+      "minMargin": 0.2,
+      "passRate": 0.2,
+      "accuracyAmongPassed": 0.5714285714285714,
+      "passedCount": 7
+    },
+    {
+      "minTopScore": 0.9,
+      "minMargin": 0.3,
+      "passRate": 0.2,
+      "accuracyAmongPassed": 0.5714285714285714,
+      "passedCount": 7
+    }
+  ],
+  "oodSuggestedRate": {
+    "total": 0,
+    "suggestedCount": 0,
+    "suggestedRate": 0,
+    "suggestedIds": []
+  },
+  "unseenOrgAccuracy": {
+    "total": 21,
+    "accuracy": 0.23809523809523808
+  }
+}

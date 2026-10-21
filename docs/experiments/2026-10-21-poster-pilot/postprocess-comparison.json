@@ -1,0 +1,480 @@
+{
+  "modelVersion": "2026-10-20T14:55:07.142Z",
+  "preprocessingVersion": "pad-square-v1",
+  "keywordsVersion": "keywords-v1",
+  "embedVersion": "embed-v1",
+  "postprocessVersion": "postprocess-v1",
+  "measuredAt": "2026-10-21T02:01:57.864Z",
+  "total": 35,
+  "noTextSignalRate": 0,
+  "standaloneAccuracy": {
+    "tm": {
+      "correct": 11,
+      "total": 35,
+      "accuracy": 0.3142857142857143
+    },
+    "keyword": {
+      "correct": 26,
+      "total": 35,
+      "accuracy": 0.7428571428571429
+    },
+    "embedding": {
+      "correct": 17,
+      "total": 35,
+      "accuracy": 0.4857142857142857
+    }
+  },
+  "variants": {
+    "A": {
+      "accuracy": {
+        "correct": 11,
+        "total": 35,
+        "accuracy": 0.3142857142857143
+      },
+      "macroF1": 0.21405228758169934,
+      "classMetrics": [
+        {
+          "classId": "BUSINESS_PLANNING",
+          "support": 5,
+          "precision": 0,
+          "recall": 0,
+          "f1": 0
+        },
+        {
+          "classId": "CAMPUS_NOTICE",
+          "support": 2,
+          "precision": 0,
+          "recall": 0,
+          "f1": 0
+        },
+        {
+          "classId": "DESIGN_MEDIA",
+          "support": 8,
+          "precision": 0.3,
+          "recall": 0.375,
+          "f1": 0.33333333333333326
+        },
+        {
+          "classId": "HOBBY_CULTURE",
+          "support": 4,
+          "precision": 0.4,
+          "recall": 0.5,
+          "f1": 0.4444444444444445
+        },
+        {
+          "classId": "IT_ENGINEERING",
+          "support": 7,
+          "precision": 0.4,
+          "recall": 0.5714285714285714,
+          "f1": 0.47058823529411764
+        },
+        {
+          "classId": "LAW_POLICY",
+          "support": 2,
+          "precision": 0,
+          "recall": 0,
+          "f1": 0
+        },
+        {
+          "classId": "SOCIAL_ENVIRONMENT",
+          "support": 7,
+          "precision": 0.2222222222222222,
+          "recall": 0.2857142857142857,
+          "f1": 0.25
+        }
+      ],
+      "confusionMatrix": {
+        "classes": [
+          "BUSINESS_PLANNING",
+          "CAMPUS_NOTICE",
+          "DESIGN_MEDIA",
+          "HOBBY_CULTURE",
+          "IT_ENGINEERING",
+          "LAW_POLICY",
+          "SOCIAL_ENVIRONMENT"
+        ],
+        "matrix": {
+          "BUSINESS_PLANNING": {
+            "IT_ENGINEERING": 2,
+            "DESIGN_MEDIA": 2,
+            "SOCIAL_ENVIRONMENT": 1
+          },
+          "CAMPUS_NOTICE": {
+            "BUSINESS_PLANNING": 1,
+            "IT_ENGINEERING": 1
+          },
+          "DESIGN_MEDIA": {
+            "IT_ENGINEERING": 1,
+            "DESIGN_MEDIA": 3,
+            "SOCIAL_ENVIRONMENT": 4
+          },
+          "HOBBY_CULTURE": {
+            "DESIGN_MEDIA": 2,
+            "HOBBY_CULTURE": 2
+          },
+          "IT_ENGINEERING": {
+            "SOCIAL_ENVIRONMENT": 1,
+            "HOBBY_CULTURE": 1,
+            "IT_ENGINEERING": 4,
+            "DESIGN_MEDIA": 1
+          },
+          "LAW_POLICY": {
+            "IT_ENGINEERING": 1,
+            "SOCIAL_ENVIRONMENT": 1
+          },
+          "SOCIAL_ENVIRONMENT": {
+            "HOBBY_CULTURE": 2,
+            "IT_ENGINEERING": 1,
+            "SOCIAL_ENVIRONMENT": 2,
+            "DESIGN_MEDIA": 2
+          }
+        }
+      },
+      "suggestedRate": 0.34285714285714286,
+      "accuracyAmongSuggested": {
+        "correct": 6,
+        "total": 12,
+        "accuracy": 0.5
+      },
+      "unseenOrgAccuracy": {
+        "total": 21,
+        "accuracy": 0.23809523809523808
+      }
+    },
+    "B": {
+      "accuracy": {
+        "correct": 25,
+        "total": 35,
+        "accuracy": 0.7142857142857143
+      },
+      "macroF1": 0.6515206082432973,
+      "classMetrics": [
+        {
+          "classId": "BUSINESS_PLANNING",
+          "support": 5,
+          "precision": 1,
+          "recall": 0.4,
+          "f1": 0.5714285714285715
+        },
+        {
+          "classId": "CAMPUS_NOTICE",
+          "support": 2,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1
+        },
+        {
+          "classId": "DESIGN_MEDIA",
+          "support": 8,
+          "precision": 0.5833333333333334,
+          "recall": 0.875,
+          "f1": 0.7000000000000001
+        },
+        {
+          "classId": "HOBBY_CULTURE",
+          "support": 4,
+          "precision": 0.75,
+          "recall": 0.75,
+          "f1": 0.75
+        },
+        {
+          "classId": "IT_ENGINEERING",
+          "support": 7,
+          "precision": 0.6,
+          "recall": 0.8571428571428571,
+          "f1": 0.7058823529411764
+        },
+        {
+          "classId": "LAW_POLICY",
+          "support": 2,
+          "precision": 0,
+          "recall": 0,
+          "f1": 0
+        },
+        {
+          "classId": "SOCIAL_ENVIRONMENT",
+          "support": 7,
+          "precision": 1,
+          "recall": 0.7142857142857143,
+          "f1": 0.8333333333333333
+        }
+      ],
+      "confusionMatrix": {
+        "classes": [
+          "BUSINESS_PLANNING",
+          "CAMPUS_NOTICE",
+          "DESIGN_MEDIA",
+          "HOBBY_CULTURE",
+          "IT_ENGINEERING",
+          "LAW_POLICY",
+          "SOCIAL_ENVIRONMENT"
+        ],
+        "matrix": {
+          "BUSINESS_PLANNING": {
+            "IT_ENGINEERING": 2,
+            "DESIGN_MEDIA": 1,
+            "BUSINESS_PLANNING": 2
+          },
+          "CAMPUS_NOTICE": {
+            "CAMPUS_NOTICE": 2
+          },
+          "DESIGN_MEDIA": {
+            "IT_ENGINEERING": 1,
+            "DESIGN_MEDIA": 7
+          },
+          "HOBBY_CULTURE": {
+            "HOBBY_CULTURE": 3,
+            "DESIGN_MEDIA": 1
+          },
+          "IT_ENGINEERING": {
+            "IT_ENGINEERING": 6,
+            "HOBBY_CULTURE": 1
+          },
+          "LAW_POLICY": {
+            "IT_ENGINEERING": 1,
+            "DESIGN_MEDIA": 1
+          },
+          "SOCIAL_ENVIRONMENT": {
+            "SOCIAL_ENVIRONMENT": 5,
+            "DESIGN_MEDIA": 2
+          }
+        }
+      },
+      "suggestedRate": 0.2857142857142857,
+      "accuracyAmongSuggested": {
+        "correct": 9,
+        "total": 10,
+        "accuracy": 0.9
+      },
+      "unseenOrgAccuracy": {
+        "total": 21,
+        "accuracy": 0.6190476190476191
+      }
+    },
+    "C": {
+      "accuracy": {
+        "correct": 12,
+        "total": 35,
+        "accuracy": 0.34285714285714286
+      },
+      "macroF1": 0.23717627401837924,
+      "classMetrics": [
+        {
+          "classId": "BUSINESS_PLANNING",
+          "support": 5,
+          "precision": 0,
+          "recall": 0,
+          "f1": 0
+        },
+        {
+          "classId": "CAMPUS_NOTICE",
+          "support": 2,
+          "precision": 0,
+          "recall": 0,
+          "f1": 0
+        },
+        {
+          "classId": "DESIGN_MEDIA",
+          "support": 8,
+          "precision": 0.2727272727272727,
+          "recall": 0.375,
+          "f1": 0.3157894736842105
+        },
+        {
+          "classId": "HOBBY_CULTURE",
+          "support": 4,
+          "precision": 0.5,
+          "recall": 0.5,
+          "f1": 0.5
+        },
+        {
+          "classId": "IT_ENGINEERING",
+          "support": 7,
+          "precision": 0.36363636363636365,
+          "recall": 0.5714285714285714,
+          "f1": 0.4444444444444444
+        },
+        {
+          "classId": "LAW_POLICY",
+          "support": 2,
+          "precision": 0,
+          "recall": 0,
+          "f1": 0
+        },
+        {
+          "classId": "SOCIAL_ENVIRONMENT",
+          "support": 7,
+          "precision": 0.375,
+          "recall": 0.42857142857142855,
+          "f1": 0.39999999999999997
+        }
+      ],
+      "confusionMatrix": {
+        "classes": [
+          "BUSINESS_PLANNING",
+          "CAMPUS_NOTICE",
+          "DESIGN_MEDIA",
+          "HOBBY_CULTURE",
+          "IT_ENGINEERING",
+          "LAW_POLICY",
+          "SOCIAL_ENVIRONMENT"
+        ],
+        "matrix": {
+          "BUSINESS_PLANNING": {
+            "IT_ENGINEERING": 2,
+            "DESIGN_MEDIA": 2,
+            "SOCIAL_ENVIRONMENT": 1
+          },
+          "CAMPUS_NOTICE": {
+            "BUSINESS_PLANNING": 1,
+            "IT_ENGINEERING": 1
+          },
+          "DESIGN_MEDIA": {
+            "IT_ENGINEERING": 2,
+            "DESIGN_MEDIA": 3,
+            "SOCIAL_ENVIRONMENT": 3
+          },
+          "HOBBY_CULTURE": {
+            "DESIGN_MEDIA": 2,
+            "HOBBY_CULTURE": 2
+          },
+          "IT_ENGINEERING": {
+            "DESIGN_MEDIA": 2,
+            "HOBBY_CULTURE": 1,
+            "IT_ENGINEERING": 4
+          },
+          "LAW_POLICY": {
+            "IT_ENGINEERING": 1,
+            "SOCIAL_ENVIRONMENT": 1
+          },
+          "SOCIAL_ENVIRONMENT": {
+            "SOCIAL_ENVIRONMENT": 3,
+            "IT_ENGINEERING": 1,
+            "DESIGN_MEDIA": 2,
+            "HOBBY_CULTURE": 1
+          }
+        }
+      },
+      "suggestedRate": 0.08571428571428572,
+      "accuracyAmongSuggested": {
+        "correct": 1,
+        "total": 3,
+        "accuracy": 0.3333333333333333
+      },
+      "unseenOrgAccuracy": {
+        "total": 21,
+        "accuracy": 0.2857142857142857
+      }
+    },
+    "D": {
+      "accuracy": {
+        "correct": 25,
+        "total": 35,
+        "accuracy": 0.7142857142857143
+      },
+      "macroF1": 0.6515206082432973,
+      "classMetrics": [
+        {
+          "classId": "BUSINESS_PLANNING",
+          "support": 5,
+          "precision": 1,
+          "recall": 0.4,
+          "f1": 0.5714285714285715
+        },
+        {
+          "classId": "CAMPUS_NOTICE",
+          "support": 2,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1
+        },
+        {
+          "classId": "DESIGN_MEDIA",
+          "support": 8,
+          "precision": 0.5833333333333334,
+          "recall": 0.875,
+          "f1": 0.7000000000000001
+        },
+        {
+          "classId": "HOBBY_CULTURE",
+          "support": 4,
+          "precision": 0.75,
+          "recall": 0.75,
+          "f1": 0.75
+        },
+        {
+          "classId": "IT_ENGINEERING",
+          "support": 7,
+          "precision": 0.6,
+          "recall": 0.8571428571428571,
+          "f1": 0.7058823529411764
+        },
+        {
+          "classId": "LAW_POLICY",
+          "support": 2,
+          "precision": 0,
+          "recall": 0,
+          "f1": 0
+        },
+        {
+          "classId": "SOCIAL_ENVIRONMENT",
+          "support": 7,
+          "precision": 1,
+          "recall": 0.7142857142857143,
+          "f1": 0.8333333333333333
+        }
+      ],
+      "confusionMatrix": {
+        "classes": [
+          "BUSINESS_PLANNING",
+          "CAMPUS_NOTICE",
+          "DESIGN_MEDIA",
+          "HOBBY_CULTURE",
+          "IT_ENGINEERING",
+          "LAW_POLICY",
+          "SOCIAL_ENVIRONMENT"
+        ],
+        "matrix": {
+          "BUSINESS_PLANNING": {
+            "IT_ENGINEERING": 2,
+            "DESIGN_MEDIA": 1,
+            "BUSINESS_PLANNING": 2
+          },
+          "CAMPUS_NOTICE": {
+            "CAMPUS_NOTICE": 2
+          },
+          "DESIGN_MEDIA": {
+            "IT_ENGINEERING": 1,
+            "DESIGN_MEDIA": 7
+          },
+          "HOBBY_CULTURE": {
+            "HOBBY_CULTURE": 3,
+            "DESIGN_MEDIA": 1
+          },
+          "IT_ENGINEERING": {
+            "IT_ENGINEERING": 6,
+            "HOBBY_CULTURE": 1
+          },
+          "LAW_POLICY": {
+            "IT_ENGINEERING": 1,
+            "DESIGN_MEDIA": 1
+          },
+          "SOCIAL_ENVIRONMENT": {
+            "SOCIAL_ENVIRONMENT": 5,
+            "DESIGN_MEDIA": 2
+          }
+        }
+      },
+      "suggestedRate": 0.2571428571428571,
+      "accuracyAmongSuggested": {
+        "correct": 8,
+        "total": 9,
+        "accuracy": 0.8888888888888888
+      },
+      "unseenOrgAccuracy": {
+        "total": 21,
+        "accuracy": 0.6190476190476191
+      }
+    }
+  }
+}

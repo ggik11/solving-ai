@@ -170,6 +170,10 @@ npm run worker:link-check
 `poster_analyses` 기록이 재분석 없이도 여전히 해석 가능해야 하기 때문입니다(가이드 체크리스트
 8번, "재분석이 확정값을 바꾸지 않는다").
 
+TM 단독(1차)과 키워드·임베딩 2차 후처리(A~D)를 같은 test 자료로 비교한 실험 기록은
+`docs/experiments/2026-10-21-poster-pilot/README.md`에 있습니다(요약은
+`docs/teachable-machine-integration.md` 12.8).
+
 ## 테스트
 
 ```bash
