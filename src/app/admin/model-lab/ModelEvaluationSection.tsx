@@ -20,6 +20,7 @@ import { PREPROCESS_VERSION, renderToSquareCanvas } from "@/lib/poster/preproces
 import { teachableMachineLoader, type PosterModelLoader } from "@/lib/poster/modelLoader";
 import { judgePosterClassification } from "@/lib/poster/classifier";
 import type { PosterClassifierConfig } from "@/lib/poster/classifier";
+import { PostprocessComparisonSection } from "./PostprocessComparisonSection";
 
 const SWEEP_TOP_SCORES = [0.6, 0.7, 0.8, 0.9];
 const SWEEP_MARGINS = [0.1, 0.2, 0.3];
@@ -27,7 +28,7 @@ const SWEEP: ThresholdConfig[] = SWEEP_TOP_SCORES.flatMap((minTopScore) =>
   SWEEP_MARGINS.map((minMargin) => ({ minTopScore, minMargin }))
 );
 
-type InputMode = "predictions-csv" | "run-model";
+type InputMode = "predictions-csv" | "run-model" | "postprocess-compare";
 
 /**
  * 6.3 모델 평가(가이드 6.3). 두 입력 경로를 지원한다.
@@ -189,118 +190,131 @@ export function ModelEvaluationSection({
         >
           이미지 + manifest로 모델 실행
         </button>
+        <button
+          type="button"
+          onClick={() => setMode("postprocess-compare")}
+          className={`rounded-full border px-3 py-1 ${mode === "postprocess-compare" ? "border-[var(--color-brand-600)] bg-[var(--color-brand-600)] text-white" : "border-[var(--color-border)]"}`}
+        >
+          단계별 비교(2차 후처리)
+        </button>
       </div>
 
-      {mode === "predictions-csv" ? (
-        <label className="flex flex-col gap-1 text-sm font-medium">
-          예측 결과 CSV (id,true_label,predicted_label,top_score,margin,split,org_name)
-          <input type="file" accept=".csv,text/csv" onChange={handlePredictionsCsv} className="text-sm font-normal" />
-        </label>
+      {mode === "postprocess-compare" ? (
+        <PostprocessComparisonSection posterConfig={posterConfig} />
       ) : (
-        <RunModelInputs onRun={handleRunModel} running={running} />
-      )}
-
-      {parseNotice && <p className="text-xs text-[var(--color-muted-foreground)]">{parseNotice}</p>}
-
-      {predictions && (
-        <div className="flex flex-col gap-3 text-sm">
-          <p className="text-xs text-[var(--color-muted-foreground)]">
-            {predictions.length}건 로드됨 (test {testSplit.length}건)
-          </p>
-
-          {accuracy && baseline && macroF1 != null ? (
-            <ul className="text-sm">
-              <li>
-                정확도: {accuracy.correct}/{accuracy.total} ({Math.round(accuracy.accuracy * 100)}%)
-              </li>
-              <li>
-                다수 클래스 기준선: {Math.round(baseline.accuracy * 100)}% ({baseline.majorityLabel ?? "-"})
-              </li>
-              <li>macro-F1: {macroF1.toFixed(3)}</li>
-            </ul>
+        <>
+          {mode === "predictions-csv" ? (
+            <label className="flex flex-col gap-1 text-sm font-medium">
+              예측 결과 CSV (id,true_label,predicted_label,top_score,margin,split,org_name)
+              <input type="file" accept=".csv,text/csv" onChange={handlePredictionsCsv} className="text-sm font-normal" />
+            </label>
           ) : (
-            <p className="text-xs text-[var(--color-muted-foreground)]">test split 자료가 없어 정확도를 계산할 수 없어요.</p>
+            <RunModelInputs onRun={handleRunModel} running={running} />
           )}
 
-          {classMetrics && classMetrics.length > 0 && (
-            <table className="text-xs">
-              <thead>
-                <tr className="text-left text-[var(--color-muted-foreground)]">
-                  <th className="pr-3">분야</th>
-                  <th className="pr-3">건수</th>
-                  <th className="pr-3">정밀도</th>
-                  <th className="pr-3">재현율</th>
-                  <th>F1</th>
-                </tr>
-              </thead>
-              <tbody>
-                {classMetrics.map((m) => (
-                  <tr key={m.classId}>
-                    <td className="pr-3">{m.classId}</td>
-                    <td className="pr-3">{m.support}</td>
-                    <td className="pr-3">{m.precision.toFixed(2)}</td>
-                    <td className="pr-3">{m.recall.toFixed(2)}</td>
-                    <td>{m.f1.toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+          {parseNotice && <p className="text-xs text-[var(--color-muted-foreground)]">{parseNotice}</p>}
 
-          {ood && (
-            <p className="text-xs">
-              ood 중 suggested 비율: {ood.suggestedCount}/{ood.total} ({Math.round(ood.suggestedRate * 100)}%)
-            </p>
-          )}
-          {unseenOrg && unseenOrg.total > 0 && (
-            <p className="text-xs">
-              처음 보는 기관 정확도: {Math.round(unseenOrg.accuracy * 100)}% (n={unseenOrg.total})
-            </p>
-          )}
+          {predictions && (
+            <div className="flex flex-col gap-3 text-sm">
+              <p className="text-xs text-[var(--color-muted-foreground)]">
+                {predictions.length}건 로드됨 (test {testSplit.length}건)
+              </p>
 
-          {sweep && sweep.length > 0 && (
-            <details className="text-xs">
-              <summary className="cursor-pointer font-medium">임계값 조합별 통과율·정확도</summary>
-              <table className="mt-2">
-                <thead>
-                  <tr className="text-left text-[var(--color-muted-foreground)]">
-                    <th className="pr-3">top_score</th>
-                    <th className="pr-3">margin</th>
-                    <th className="pr-3">통과율</th>
-                    <th>통과 자료 정확도</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sweep.map((row, i) => (
-                    <tr key={i}>
-                      <td className="pr-3">{row.minTopScore}</td>
-                      <td className="pr-3">{row.minMargin}</td>
-                      <td className="pr-3">{Math.round(row.passRate * 100)}%</td>
-                      <td>{Math.round(row.accuracyAmongPassed * 100)}%</td>
+              {accuracy && baseline && macroF1 != null ? (
+                <ul className="text-sm">
+                  <li>
+                    정확도: {accuracy.correct}/{accuracy.total} ({Math.round(accuracy.accuracy * 100)}%)
+                  </li>
+                  <li>
+                    다수 클래스 기준선: {Math.round(baseline.accuracy * 100)}% ({baseline.majorityLabel ?? "-"})
+                  </li>
+                  <li>macro-F1: {macroF1.toFixed(3)}</li>
+                </ul>
+              ) : (
+                <p className="text-xs text-[var(--color-muted-foreground)]">test split 자료가 없어 정확도를 계산할 수 없어요.</p>
+              )}
+
+              {classMetrics && classMetrics.length > 0 && (
+                <table className="text-xs">
+                  <thead>
+                    <tr className="text-left text-[var(--color-muted-foreground)]">
+                      <th className="pr-3">분야</th>
+                      <th className="pr-3">건수</th>
+                      <th className="pr-3">정밀도</th>
+                      <th className="pr-3">재현율</th>
+                      <th>F1</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </details>
-          )}
+                  </thead>
+                  <tbody>
+                    {classMetrics.map((m) => (
+                      <tr key={m.classId}>
+                        <td className="pr-3">{m.classId}</td>
+                        <td className="pr-3">{m.support}</td>
+                        <td className="pr-3">{m.precision.toFixed(2)}</td>
+                        <td className="pr-3">{m.recall.toFixed(2)}</td>
+                        <td>{m.f1.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
 
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => downloadTextFile("model-evaluation.json", buildReport().json, "application/json")}
-              className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs"
-            >
-              JSON 다운로드
-            </button>
-            <button
-              type="button"
-              onClick={() => downloadTextFile("model-evaluation.md", buildReport().markdown, "text/markdown")}
-              className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs"
-            >
-              마크다운 다운로드
-            </button>
-          </div>
-        </div>
+              {ood && (
+                <p className="text-xs">
+                  ood 중 suggested 비율: {ood.suggestedCount}/{ood.total} ({Math.round(ood.suggestedRate * 100)}%)
+                </p>
+              )}
+              {unseenOrg && unseenOrg.total > 0 && (
+                <p className="text-xs">
+                  처음 보는 기관 정확도: {Math.round(unseenOrg.accuracy * 100)}% (n={unseenOrg.total})
+                </p>
+              )}
+
+              {sweep && sweep.length > 0 && (
+                <details className="text-xs">
+                  <summary className="cursor-pointer font-medium">임계값 조합별 통과율·정확도</summary>
+                  <table className="mt-2">
+                    <thead>
+                      <tr className="text-left text-[var(--color-muted-foreground)]">
+                        <th className="pr-3">top_score</th>
+                        <th className="pr-3">margin</th>
+                        <th className="pr-3">통과율</th>
+                        <th>통과 자료 정확도</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sweep.map((row, i) => (
+                        <tr key={i}>
+                          <td className="pr-3">{row.minTopScore}</td>
+                          <td className="pr-3">{row.minMargin}</td>
+                          <td className="pr-3">{Math.round(row.passRate * 100)}%</td>
+                          <td>{Math.round(row.accuracyAmongPassed * 100)}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </details>
+              )}
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => downloadTextFile("model-evaluation.json", buildReport().json, "application/json")}
+                  className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs"
+                >
+                  JSON 다운로드
+                </button>
+                <button
+                  type="button"
+                  onClick={() => downloadTextFile("model-evaluation.md", buildReport().markdown, "text/markdown")}
+                  className="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs"
+                >
+                  마크다운 다운로드
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </section>
   );

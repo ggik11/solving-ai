@@ -1278,3 +1278,39 @@ manifest 라벨 검사(가이드 6.2)가 "검사할 기준이 없음"으로 통�
 - **의도적으로 남긴 것(P6 범위):** 결합 모델을 test 자료로 재평가해 TM 단독(31%/0.214)과
   비교하고 기본 판정 경로를 바꿀지 결정하는 작업은 하지 않았다 — 비율·규칙을 test를 보기 전에
   고정해 두는 것이 이번 작업의 목적이었다.
+
+## 포스터 2차 후처리 P5: 단계별 비교 도구 (완료)
+
+- **범위:** `docs/teachable-machine-integration.md` 12.7 — `/admin/model-lab`의 "6.3 모델 평가"
+  섹션에 "단계별 비교(2차 후처리)" 모드를 추가했다. TM만(A)/TM+키워드(B)/TM+임베딩(C)/
+  TM+키워드+임베딩+합의(D) 네 방식을 이미지마다 신호를 한 번씩만 계산해 동시에 비교한다.
+  `keywordRules`/`embeddingClassifier`/`combine`의 규칙·가중치·사전·참조 파일은 손대지
+  않았다(P4에서 test 사진을 보기 전에 고정한 그대로).
+- **순수 계산(`src/lib/modelLab/postprocessCompare.ts`, 신규):** `computeRowVariants`가 한
+  이미지의 신호(TM 점수·OCR 성공 여부·키워드·임베딩 분류 결과)로 A~D를 계산한다 — B·C도
+  `combinePosterSignals`를 그대로 호출하고 빠진 신호만 `null`로 넘긴다. `computeComparisonReport`
+  가 `src/lib/modelLab/metrics.ts`의 기존 지표 함수(정확도·macro-F1·분야별 지표·혼동행렬·처음
+  보는 기관 정확도)를 재사용해 A~D 전체를 집계하고, 신호별 단독 정확도(참고용)와 글자 신호
+  없음 비율을 추가로 계산한다. `filterTestSplitFiles`는 업로드한 파일명을 manifest의 split과
+  대조해 test만 평가 대상으로 고르고 train은 경고 목록으로 분리한다(순수 함수, mock 없이 직접
+  단위 테스트).
+- **화면(`PostprocessComparisonSection.tsx`, 신규, `ModelEvaluationSection`의 세 번째 모드):**
+  manifest.csv + 이미지 여러 장을 올리고 실행하면 `window.confirm`으로 "평가용 사진은 한 번만
+  평가합니다. 결과를 보고 규칙을 바꾸지 않습니다"를 띄운 뒤, test 이미지만 모델 로딩 →
+  전처리·예측(TM) → OCR → 키워드·임베딩 분류 순으로 한 번씩 돌려 결과 표·분야별 지표(방식별
+  접은 상세)·신호별 단독 정확도·글자 신호 없음 비율을 보여주고, JSON·마크다운·이미지별 CSV로
+  내보낼 수 있다. CSV에는 걸린 키워드 단어만 담고 OCR 원문·포스터 이미지는 어떤 내보내기에도
+  넣지 않는다.
+- **실제 데이터로 검증:** Playwright로 실제 관리자 화면을 띄워 `datasets/manifest.csv`와
+  `pictures/`의 진짜 test·train 이미지(IT_ENGINEERING 1장 test + 1장 train, DESIGN_MEDIA 1장
+  test)로 돌려 봤다 — train 이미지 경고가 정확히 뜨고, train 이미지는 평가에서 빠졌다. A~D가
+  서로 다른 결과를 냈다(한 이미지는 TM 단독으로는 오답이었지만 키워드·임베딩을 더하자 정답으로
+  바뀜). 이미지별 CSV도 기대한 11개 컬럼 그대로 내려받아 확인했다. 이번에는 새 버그를 찾지
+  못했다(P1/P4에서 찾은 `allowLocalModels`·BOM·배치 임베딩 버그들을 이미 고쳐 둔 덕도 있다).
+- **검증:** 단위 테스트 신규 1개 파일(`tests/unit/model-lab-postprocess-compare.test.ts`, 11건 —
+  A~D 계산, split 필터, 지표 집계, 신호별 단독 정확도, 글자 신호 없음 비율, 빈 입력). `npm test`
+  535/535 통과, `npm run build` 성공. 로컬 DB는 건드리지 않았다(`supabase db reset` 실행 안 함,
+  이번 작업은 DB 변경이 없다).
+- **의도적으로 남긴 것:** 실제 test 자료 전체로 A~D를 돌려 TM 단독(31%/0.214)과 비교하고
+  "전환" 여부를 결정하는 일은 하지 않았다 — 그 실행과 판단은 사람이 다음 단계에서 이 도구로
+  직접 한다.
