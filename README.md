@@ -18,6 +18,9 @@ cp .env.example .env.local   # 아래 "로컬 Supabase 띄우기" 실행 후 값
 npm run fetch:ai-assets      # /admin/model-lab의 OCR·문장 임베딩 미리보기에 필요한 파일을 받는다(최초 1회, docs 8.4 참고)
 ```
 
+처음 실행 후에는 `/admin/model-lab`의 "모델 등록" 섹션에서 현재 모델을 `pilot-7-v1`로
+등록합니다(절차는 아래 "포스터 분류 모델 교체 절차" 3~4단계와 동일).
+
 ## 로컬 Supabase 띄우기
 
 ```bash
