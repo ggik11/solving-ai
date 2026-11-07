@@ -177,6 +177,26 @@ TM 단독(1차)과 키워드·임베딩 2차 후처리(A~D)를 같은 test 자�
 `docs/experiments/2026-10-21-poster-pilot/README.md`에 있습니다(요약은
 `docs/teachable-machine-integration.md` 12.8).
 
+## Teachable Machine 모델 데모 (GitHub Pages)
+
+Node 서버·Docker·Supabase 없이 브라우저에서만 돌아가는 정적 데모입니다. 1차 Teachable
+Machine 모델(`pilot-7-v1`)만 보여주며, 포스터 이미지는 저장하거나 어디에도 전송하지 않고
+브라우저 안에서만 분석합니다.
+
+**데모 링크:** https://ggik11.github.io/solving-ai/tm-demo/
+
+소스는 `docs/tm-demo/`(`index.html`, `app.js`, `judge.js`, `style.css`, `model/`)에 있습니다.
+모델 파일을 교체하면(위 "포스터 분류 모델 교체 절차") `public/models/poster-classifier/`의
+`model.json`/`metadata.json`/`weights.bin`을 `docs/tm-demo/model/`에도 그대로 복사해야
+데모가 최신 모델을 반영합니다.
+
+### GitHub Pages 설정 방법
+
+1. GitHub 저장소 **Settings → Pages**로 이동합니다.
+2. **Build and deployment → Source**를 "Deploy from a branch"로 둡니다.
+3. **Branch**를 `master`, 폴더를 `/docs`로 선택하고 저장합니다.
+4. 반영까지 몇 분 정도 걸릴 수 있습니다. 이후 위 데모 링크로 접속할 수 있습니다.
+
 ## 테스트
 
 ```bash

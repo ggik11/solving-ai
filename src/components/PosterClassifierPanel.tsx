@@ -245,20 +245,23 @@ export function PosterClassifierPanel({
               </ul>
 
               {result.postprocess && (
-                <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-background)] p-2 text-xs text-[var(--color-muted-foreground)]">
-                  {result.postprocess.finalRanking.length > 0 && (
+                <details className="rounded-md border border-[var(--color-border)] bg-[var(--color-background)] p-2 text-xs text-[var(--color-muted-foreground)]">
+                  <summary className="cursor-pointer font-medium text-[var(--color-muted-foreground)]">2차 보완 결과</summary>
+                  <div className="mt-2 flex flex-col gap-1">
+                    {result.postprocess.finalRanking.length > 0 && (
+                      <p>
+                        최종 순위:{" "}
+                        {result.postprocess.finalRanking.map((r, i) => `${i + 1}. ${r.classId} ${Math.round(r.score * 100)}%`).join(" · ")}
+                      </p>
+                    )}
                     <p>
-                      최종 순위:{" "}
-                      {result.postprocess.finalRanking.map((r, i) => `${i + 1}. ${r.classId} ${Math.round(r.score * 100)}%`).join(" · ")}
+                      {!result.postprocess.keywordTopClass && !result.postprocess.embedTopClass
+                        ? "TM 단독 판정 — 글자 신호(키워드·임베딩) 없음"
+                        : `신호별 1위: TM ${result.postprocess.tmTopClass ?? "-"} · 키워드 ${result.postprocess.keywordTopClass ?? "-"} · 임베딩 ${result.postprocess.embedTopClass ?? "-"} (${result.postprocess.signalAgreement ?? 0}개 일치)`}
                     </p>
-                  )}
-                  <p>
-                    {!result.postprocess.keywordTopClass && !result.postprocess.embedTopClass
-                      ? "TM 단독 판정 — 글자 신호(키워드·임베딩) 없음"
-                      : `신호별 1위: TM ${result.postprocess.tmTopClass ?? "-"} · 키워드 ${result.postprocess.keywordTopClass ?? "-"} · 임베딩 ${result.postprocess.embedTopClass ?? "-"} (${result.postprocess.signalAgreement ?? 0}개 일치)`}
-                  </p>
-                  {result.postprocess.matchedKeywords.length > 0 && <p>근거 키워드: {result.postprocess.matchedKeywords.join(", ")}</p>}
-                </div>
+                    {result.postprocess.matchedKeywords.length > 0 && <p>근거 키워드: {result.postprocess.matchedKeywords.join(", ")}</p>}
+                  </div>
+                </details>
               )}
 
               {orgFieldHistory && orgFieldHistory.length > 0 && (

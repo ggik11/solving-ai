@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>대외활동 포스터 분야 분류 — Teachable Machine 모델 데모</title>
+<link rel="stylesheet" href="./style.css" />
+<!-- 앱(package.json)과 같은 버전으로 고정해서 불러온다: @tensorflow/tfjs 1.3.1, @teachablemachine/image 0.8.5 -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8.5/dist/teachablemachine-image.min.js"></script>
+</head>
+<body>
+<main>
+  <h1>대외활동 포스터 분야 분류 — Teachable Machine 모델 데모</h1>
+
+  <p class="privacy-note">이미지는 이 브라우저 안에서만 분석되고 어디에도 전송되지 않습니다.</p>
+
+  <label class="file-picker" for="fileInput">
+    포스터 이미지 선택 (여러 장 가능)
+    <input id="fileInput" type="file" accept="image/*" multiple />
+  </label>
+
+  <p id="statusMsg" class="status" role="status"></p>
+
+  <div id="results"></div>
+
+  <section class="info-section">
+    <h2>모델 정보</h2>
+    <ul>
+      <li>분류 구성: <strong>pilot-7-v1</strong> (7개 분야)</li>
+      <li>학습 데이터: 144장</li>
+      <li>모델 버전(timeStamp): 2026-10-20T14:55:07.142Z</li>
+      <li>전처리 버전: pad-square-v1 (비율 유지, 흰 여백, 224px)</li>
+    </ul>
+
+    <h2>평가 결과 요약 (test 35장)</h2>
+    <ul>
+      <li>정확도: 31% (11/35)</li>
+      <li>macro-F1: 0.214</li>
+    </ul>
+    <p>
+      <a
+        href="https://github.com/ggik11/solving-ai/blob/master/docs/experiments/2026-10-21-poster-pilot/README.md"
+        target="_blank"
+        rel="noopener"
+        >실험 기록 전체 보기 →</a
+      >
+    </p>
+  </section>
+
+  <footer>이 데모는 1차 Teachable Machine 모델 단독 결과만 보여줍니다. 실제 서비스는 키워드·임베딩 2차 후처리를 함께 씁니다.</footer>
+</main>
+
+<template id="cardTemplate">
+  <article class="card">
+    <p class="card-filename"></p>
+    <p class="card-body"></p>
+    <div class="image-pair">
+      <figure>
+        <img class="original-img" alt="원본 포스터 이미지" />
+        <figcaption>원본</figcaption>
+      </figure>
+      <figure>
+        <div class="preprocessed-host"></div>
+        <figcaption>전처리 후 (224px, pad-square-v1)</figcaption>
+      </figure>
+    </div>
+    <ul class="bars-host"></ul>
+    <p class="summary-host"></p>
+    <div class="verdict-host"></div>
+  </article>
+</template>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>
