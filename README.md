@@ -4,6 +4,16 @@
 **상명대학교 공식 서비스가 아닙니다.** 설계 배경은 `docs/architecture.md`, 진행 상황은
 `PROGRESS.md`를 참고하세요.
 
+## 한눈에 보기 — Teachable Machine 포스터 분류
+
+**▶ 데모·실험 보고서: https://ggik11.github.io/solving-ai/tm-demo/** (설치 없이 브라우저에서 바로 열림)
+
+[![Teachable Machine 포스터 분류 데모](docs/tm-demo/img/preview.png)](https://ggik11.github.io/solving-ai/tm-demo/)
+
+- 대외활동 포스터 180장을 7개 분야로 라벨링하고, Teachable Machine 표준 이미지 모델을 한 번 학습해 학습에 쓰지 않은 35장으로 한 번 평가했다. 정확도 31%(무작위 14%, 다수 클래스 23%), macro-F1 0.214.
+- 오류를 분석하니 모델은 글자가 아니라 색·구도(그림체)로 판단했고, 처음 보는 기관의 포스터에서 특히 약했다(24% vs 본 적 있는 기관 43%). 데모의 "판단 근거 보기"(가림 실험)로 직접 확인할 수 있다.
+- 이 약점을 브라우저 안 OCR·키워드·문장 임베딩으로 보완해 같은 평가 세트에서 정확도 71%로 올렸다(규칙은 평가 전 고정). 자세한 기록은 `docs/experiments/2026-10-21-poster-pilot/README.md`.
+
 ## 요구 사항
 
 - Node.js 24.x, npm
@@ -185,7 +195,7 @@ Machine 모델(`pilot-7-v1`)만 보여주며, 포스터 이미지는 저장하�
 
 **데모 링크:** https://ggik11.github.io/solving-ai/tm-demo/
 
-소스는 `docs/tm-demo/`(`index.html`, `app.js`, `judge.js`, `style.css`, `model/`)에 있습니다.
+소스는 `docs/tm-demo/`(`index.html`, `app.js`, `judge.js`, `metrics.js`, `charts.js`, `style.css`, `model/`, `vendor/`, `examples/`, `img/`)에 있습니다. 라이브러리는 `vendor/`에 포함해 외부 CDN 없이 동작하고(출처·라이선스는 `vendor/README.md`), 페이지의 모든 수치는 `docs/experiments/`의 결과 파일을 읽어 계산합니다. Teachable Machine "Under the hood" 화면 캡처를 `docs/tm-demo/img/`에 `tm-accuracy-per-class.png`, `tm-confusion-matrix.png`, `tm-accuracy-per-epoch.png`, `tm-loss-per-epoch.png` 이름으로 넣으면 학습 설정 섹션에 자동으로 표시됩니다.
 모델 파일을 교체하면(위 "포스터 분류 모델 교체 절차") `public/models/poster-classifier/`의
 `model.json`/`metadata.json`/`weights.bin`을 `docs/tm-demo/model/`에도 그대로 복사해야
 데모가 최신 모델을 반영합니다.

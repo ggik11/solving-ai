@@ -3,58 +3,270 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>대외활동 포스터 분야 분류 — Teachable Machine 모델 데모</title>
+<title>대외활동 포스터 분류 — Teachable Machine 프로젝트</title>
+<meta name="description" content="대외활동 포스터를 7개 분야로 분류하는 Teachable Machine 모델의 설계, 학습, 평가, 오류 분석과 라이브 데모" />
 <link rel="stylesheet" href="./style.css" />
-<!-- 앱(package.json)과 같은 버전으로 고정해서 불러온다: @tensorflow/tfjs 1.3.1, @teachablemachine/image 0.8.5 -->
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8.5/dist/teachablemachine-image.min.js"></script>
+<!-- 앱(package.json)과 같은 버전(@tensorflow/tfjs 1.3.1, @teachablemachine/image 0.8.5)을 이 폴더에 포함해
+     외부 CDN 없이 불러온다. 출처·라이선스·체크섬은 vendor/README.md. -->
+<script src="./vendor/tf-1.3.1.min.js"></script>
+<script src="./vendor/teachablemachine-image-0.8.5.min.js"></script>
 </head>
 <body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <span class="brand">포스터 분류 TM 프로젝트</span>
+    <nav aria-label="섹션">
+      <a href="#overview">개요</a>
+      <a href="#demo">데모</a>
+      <a href="#data">데이터</a>
+      <a href="#training">학습</a>
+      <a href="#evaluation">평가</a>
+      <a href="#analysis">오류 분석</a>
+      <a href="#extension">보완</a>
+      <a href="#limits">한계</a>
+      <a href="#reproduce">재현</a>
+    </nav>
+  </div>
+</header>
+
 <main>
-  <h1>대외활동 포스터 분야 분류 — Teachable Machine 모델 데모</h1>
-
-  <p class="privacy-note">이미지는 이 브라우저 안에서만 분석되고 어디에도 전송되지 않습니다.</p>
-
-  <label class="file-picker" for="fileInput">
-    포스터 이미지 선택 (여러 장 가능)
-    <input id="fileInput" type="file" accept="image/*" multiple />
-  </label>
-
-  <p id="statusMsg" class="status" role="status"></p>
-
-  <div id="results"></div>
-
-  <section class="info-section">
-    <h2>모델 정보</h2>
-    <ul>
-      <li>분류 구성: <strong>pilot-7-v1</strong> (7개 분야)</li>
-      <li>학습 데이터: 144장</li>
-      <li>모델 버전(timeStamp): 2026-10-20T14:55:07.142Z</li>
-      <li>전처리 버전: pad-square-v1 (비율 유지, 흰 여백, 224px)</li>
-    </ul>
-
-    <h2>평가 결과 요약 (test 35장)</h2>
-    <ul>
-      <li>정확도: 31% (11/35)</li>
-      <li>macro-F1: 0.214</li>
-    </ul>
-    <p>
-      <a
-        href="https://github.com/ggik11/solving-ai/blob/master/docs/experiments/2026-10-21-poster-pilot/README.md"
-        target="_blank"
-        rel="noopener"
-        >실험 기록 전체 보기 →</a
-      >
+  <!-- 1. 개요 -->
+  <section id="overview" class="hero">
+    <p class="eyebrow">문제해결인공지능 · Teachable Machine 이미지 분류</p>
+    <h1>대외활동 포스터, 어느 분야일까?</h1>
+    <p class="lead">
+      대외활동 플랫폼에 올라오는 포스터를 사람이 일일이 분야별로 나누는 일을 Teachable Machine 이미지 모델로 돕고자 했다.
+      포스터 <strong data-bind="total-images">180</strong>장으로 7개 분야 분류 모델을 학습하고, 학습에 쓰지 않은 포스터로 한 번만 평가했다.
+      그 결과를 분석해 모델의 약점(글자를 읽지 못함)을 찾아냈고, 이를 보완하는 확장까지 진행했다.
     </p>
+    <div class="kpis">
+      <div class="kpi"><span class="kpi-value" data-bind="kpi-tm-acc">—</span><span class="kpi-label">TM 정확도 (test <span data-bind="test-n">35</span>장)</span></div>
+      <div class="kpi"><span class="kpi-value" data-bind="kpi-baseline">—</span><span class="kpi-label">무작위 기준 대비</span></div>
+      <div class="kpi"><span class="kpi-value" data-bind="kpi-unseen">—</span><span class="kpi-label">처음 보는 기관 vs 본 적 있는 기관</span></div>
+      <div class="kpi kpi-ext"><span class="kpi-value" data-bind="kpi-ext-acc">—</span><span class="kpi-label">약점 보완 후 (확장)</span></div>
+    </div>
+    <ol class="story">
+      <li><strong>설계</strong> 분야 7개와 라벨 규칙, 데이터 분리 원칙</li>
+      <li><strong>학습</strong> Teachable Machine 표준 이미지 모델</li>
+      <li><strong>평가</strong> 학습에 쓰지 않은 test로 1회</li>
+      <li><strong>오류 분석</strong> 무엇을, 왜 틀렸는가</li>
+      <li><strong>보완</strong> 분석에서 나온 약점을 글자 정보로 채움</li>
+    </ol>
   </section>
 
-  <footer>이 데모는 1차 Teachable Machine 모델 단독 결과만 보여줍니다. 실제 서비스는 키워드·임베딩 2차 후처리를 함께 씁니다.</footer>
+  <!-- 2. 라이브 데모 -->
+  <section id="demo" class="panel">
+    <h2>라이브 데모 — 모델이 실제로 판단하는 모습</h2>
+    <p class="section-lead">포스터를 올리면 학습한 Teachable Machine 모델이 7개 분야의 확률을 바로 계산한다. 이 데모는 <strong>1차 Teachable Machine 단독 결과</strong>만 보여 준다.</p>
+    <p class="privacy-note">이미지는 이 브라우저 안에서만 분석되고 어디에도 전송되지 않습니다.</p>
+    <p id="modelStatus" class="model-status" role="status"><span class="status-dot"></span><span class="status-text">모델을 불러오는 중…</span></p>
+
+    <div class="examples">
+      <p class="examples-title">바로 체험하기 — 직접 만든 가상의 예시 포스터 <span class="examples-note">(실제 행사가 아닙니다. 실제 포스터는 저작권 때문에 싣지 않았습니다)</span></p>
+      <div class="example-list">
+        <button type="button" class="example-btn" data-src="examples/example-hackathon.png" data-expected="IT_ENGINEERING" data-name="예시: 캠퍼스 AI 해커톤"><img src="examples/example-hackathon.png" alt="예시 포스터: 캠퍼스 AI 해커톤" /><span>AI 해커톤</span></button>
+        <button type="button" class="example-btn" data-src="examples/example-volunteer.png" data-expected="SOCIAL_ENVIRONMENT" data-name="예시: 환경 지킴이 봉사단"><img src="examples/example-volunteer.png" alt="예시 포스터: 환경 지킴이 봉사단 모집" /><span>환경 봉사단</span></button>
+        <button type="button" class="example-btn" data-src="examples/example-boardgame.png" data-expected="HOBBY_CULTURE" data-name="예시: 보드게임 동아리"><img src="examples/example-boardgame.png" alt="예시 포스터: 보드게임 동아리 부원 모집" /><span>보드게임 동아리</span></button>
+      </div>
+    </div>
+
+    <label class="file-picker" for="fileInput">
+      <span class="file-button">포스터 이미지 선택 (여러 장 가능)</span>
+      <input id="fileInput" type="file" accept="image/*" multiple />
+    </label>
+    <p id="statusMsg" class="status" role="status"></p>
+    <div id="results"></div>
+    <details class="howto">
+      <summary>판정 규칙 보기</summary>
+      <p>1위 점수가 <strong data-bind="rule-top">0.80</strong> 이상이고 1·2위 차이가 <strong data-bind="rule-margin">0.20</strong> 이상이면 <span class="verdict verdict-auto">자동 제안</span>, 아니면 <span class="verdict verdict-review">관리자 검토 필요</span>로 둔다. 모델이 확신하지 못하는 포스터는 사람이 확인하게 하려는 설계다.</p>
+    </details>
+    <details class="howto">
+      <summary>"판단 근거 보기"는 어떻게 계산하나요?</summary>
+      <p>모델이 보는 224px 이미지를 7×7 칸으로 나누고, 한 칸씩 회색으로 가린 뒤 다시 분류한다(가림 실험, occlusion). 어떤 칸을 가렸을 때 1위 분야의 점수가 많이 떨어지면, 모델이 그 부분을 근거로 판단했다는 뜻이다. 빨갛게 진할수록 중요한 칸이다. Teachable Machine 모델만으로 49번 추론해서 계산하며, 이미지는 브라우저 밖으로 나가지 않는다.</p>
+    </details>
+  </section>
+
+  <!-- 3. 데이터셋 설계 -->
+  <section id="data" class="panel">
+    <h2>데이터셋 설계</h2>
+    <p class="section-lead">공개된 대외활동·동아리 포스터 <strong data-bind="total-images">180</strong>장을 직접 모아 라벨을 붙였다. 학습 <strong data-bind="train-n">144</strong>장, 평가 <strong data-bind="test-n">35</strong>장이고, 분야 밖 포스터 <span data-bind="ood-n">1</span>장은 평가에서 뺐다.</p>
+    <div class="table-wrap">
+      <table class="data-table" id="splitTable">
+        <thead><tr><th>라벨</th><th>분야</th><th class="scope-col">범위</th><th class="num">학습</th><th class="num">평가</th><th class="split-bar-col">비율</th></tr></thead>
+        <tbody></tbody>
+        <tfoot></tfoot>
+      </table>
+    </div>
+
+    <h3>분류 구성이 바뀐 과정</h3>
+    <ol class="timeline">
+      <li><span class="tl-tag">pilot-4-v1</span> IT·데이터, 경영·기획, 디자인·미디어, 사회·환경 4개로 시작했다.</li>
+      <li><span class="tl-tag">pilot-6-v1</span> 팀 검토에서 법·정책과 교내 행정 공지를 추가했다. 공학은 IT에 합쳐 IT·공학으로 바꾸고, 포럼·컨퍼런스 같은 단순 참관 행사도 주제가 가장 가까운 분야로 넣었다.</li>
+      <li><span class="tl-tag">pilot-7-v1</span> 운동·취미·문화 동아리와 공연·축제가 많아 취미·문화생활을 추가했다. 순수 미술·캘리그라피·문학 공모는 디자인·예술·미디어로 넣었다. 지금 모델이 이 구성이다.</li>
+    </ol>
+
+    <h3>라벨 규칙과 데이터 원칙</h3>
+    <div class="grid-2">
+      <ul class="checklist">
+        <li>참가자가 <strong>주로 하는 일·제출하는 것</strong>으로 분야를 정한다 (예: 브랜드 서포터즈 → 경영·기획, 봉사 → 사회·환경).</li>
+        <li>단순 참관 행사도 주제가 가장 가까운 분야로 넣는다.</li>
+        <li>학교 부서가 재학생에게 안내하는 공지는 교내 행정 공지로 분리한다.</li>
+        <li>분야가 애매하면 팀 검토 후 정하거나 뺀다(중복·부적합 5장 제외).</li>
+      </ul>
+      <ul class="checklist">
+        <li>같은 기관의 같은 시리즈 포스터는 학습·평가 중 <strong>한쪽에만</strong> 둔다.</li>
+        <li>사진 복제·증강으로 개수를 부풀리지 않는다.</li>
+        <li>검증용(dev) 세트 없이 <strong>한 번 학습, 한 번 평가</strong>한다. 평가 결과를 보고 다시 학습하지 않는다.</li>
+        <li>포스터 원본은 저작권 때문에 공개 저장소에 올리지 않는다.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 4. 학습 설정 -->
+  <section id="training" class="panel">
+    <h2>학습 설정</h2>
+    <p class="section-lead">Teachable Machine의 표준 이미지 모델을 기본 설정 그대로 한 번 학습했다. 설정을 평가 결과에 맞춰 바꾸지 않아서 결과를 그대로 믿을 수 있다.</p>
+    <div class="chart-box" id="stepsChart"></div>
+    <p class="note">학습 이미지와 서비스·데모가 같은 전처리(pad-square-v1)를 거치게 해서, 학습할 때 본 모습과 실제로 판단할 때 보는 모습이 같도록 했다.</p>
+    <div class="table-wrap">
+      <table class="kv-table">
+        <tbody>
+          <tr><th>도구</th><td>Teachable Machine 이미지 프로젝트 · 표준 이미지 모델 (MobileNet 기반 전이학습: 사전학습된 특징 추출기 위에 7개 분야 분류층을 학습)</td></tr>
+          <tr><th>하이퍼파라미터</th><td>Teachable Machine 기본값 (에포크 50, 배치 크기 16, 학습률 0.001)</td></tr>
+          <tr><th>입력</th><td>224 × 224 px 컬러 이미지</td></tr>
+          <tr><th>전처리</th><td><strong>pad-square-v1</strong> — 비율을 유지한 채 흰 여백을 붙여 정사각형으로 만든 뒤 224px로 줄임</td></tr>
+          <tr><th>학습 데이터</th><td><span data-bind="train-n">144</span>장 (7개 클래스, 클래스 이름 = 라벨)</td></tr>
+          <tr><th>모델 버전</th><td><code data-bind="model-version">—</code> (metadata.json의 timeStamp)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout">
+      <strong>왜 흰 여백(pad)으로 맞췄나</strong>
+      <p>모델 입력은 정사각형인데 대외활동 포스터는 대부분 세로로 길다. 가운데만 잘라 내면 제목과 일정이 있는 위아래가 사라지고, 늘리면 그림이 찌그러진다. 그래서 포스터 전체가 보이도록 여백을 붙였고, 학습용 이미지와 서비스·데모가 똑같은 전처리를 쓴다.</p>
+    </div>
+    <figure class="tm-shots" id="tmShots" hidden>
+      <figcaption>Teachable Machine 내부 검증 화면 (Under the hood)</figcaption>
+      <div class="callout callout-tight">
+        <strong>TM 화면도 같은 결론: 학습 데이터는 외우고, 새 포스터는 못 맞힌다(과적합)</strong>
+        <p>학습 데이터 정확도는 13에포크 무렵 100%에 이르지만, TM이 학습 이미지 중 일부(23장)를 떼어 둔 내부 검증 정확도는 26%(6/23)에 머문다. 검증 손실은 첫 에포크부터 계속 올라간다. 별도 test 35장의 정확도 31%와 같은 수준으로, 이미지 모델이 분야를 일반화하지 못하고 학습 포스터를 외웠다는 뜻이다.</p>
+        <p class="note">이 화면은 공유 링크를 만들 때 같은 데이터와 기본 설정으로 다시 학습한 세션에서 캡처했다. 내부 검증은 TM이 학습 이미지에서 무작위로 떼어 낸 것이라 test 35장과 다르다. 이 페이지의 평가 수치와 데모는 처음 학습해 평가한 모델(버전 2026-10-20T14:55:07.142Z)을 쓴다.</p>
+      </div>
+      <div class="tm-shots-grid"></div>
+    </figure>
+  </section>
+
+  <!-- 5. 평가 -->
+  <section id="evaluation" class="panel">
+    <h2>평가 결과</h2>
+    <p class="section-lead" data-bind="eval-lead">평가 데이터를 불러오는 중…</p>
+    <div class="chart-box" id="baselineChart"></div>
+
+    <h3>분야별 성능</h3>
+    <div class="table-wrap">
+      <table class="data-table" id="classTable">
+        <thead><tr><th>분야</th><th class="num">평가 수</th><th class="num">정밀도</th><th class="num">재현율</th><th class="num">F1</th><th class="split-bar-col">F1</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="note">정밀도 = 그 분야라고 예측한 것 중 맞은 비율, 재현율 = 실제 그 분야 중 맞힌 비율. 법·정책과 교내 행정 공지는 평가 포스터가 2장씩이라 수치의 흔들림이 크다.</p>
+
+    <h3>혼동행렬 — 무엇을 무엇으로 착각했나</h3>
+    <div class="chart-box chart-scroll" id="confusionChart"></div>
+    <p class="note">대각선(파란색)이 맞힌 것, 나머지(주황색)가 착각이다. 칸에 마우스를 올리면 자세한 수치가 보인다.</p>
+
+    <h3>자동 제안 기준을 바꾸면</h3>
+    <div class="chart-box" id="sweepChart"></div>
+    <p class="note" data-bind="sweep-note"></p>
+
+    <p class="badge-line" data-bind="repro"></p>
+  </section>
+
+  <!-- 6. 오류 분석 -->
+  <section id="analysis" class="panel">
+    <h2>오류 분석 — TM의 약점 찾기</h2>
+    <p class="section-lead">틀린 사례를 묶어 보면 우연이 아니라 일정한 패턴이 있었다. 이 패턴이 다음 단계(보완)의 근거가 됐다.</p>
+
+    <h3>가장 많이 헷갈린 분야 쌍</h3>
+    <ol class="confusion-list" id="confusionList"></ol>
+
+    <h3>처음 보는 기관에서 더 약하다</h3>
+    <div class="chart-box" id="seenChart"></div>
+
+    <h3>결론: 모델은 '그림체'를 보고 판단한다</h3>
+    <div class="findings">
+      <article class="finding">
+        <span class="finding-no">1</span>
+        <h4>분야 정보는 글자에 있다</h4>
+        <p>포스터의 분야는 "해커톤", "봉사", "공모전 주제" 같은 <strong>글자</strong>로 드러난다. 그런데 224px로 줄이면 작은 글자는 거의 사라지고, 모델에는 색·구도·그림체만 남는다. 데모의 전처리 이미지에서 직접 확인할 수 있다.</p>
+      </article>
+      <article class="finding">
+        <span class="finding-no">2</span>
+        <h4>기관의 디자인 스타일을 외운다</h4>
+        <p data-bind="finding-unseen">학습에 없던 기관의 포스터에서 정확도가 크게 떨어졌다. 분야보다 기관별 디자인을 일부 외웠다는 신호다.</p>
+      </article>
+      <article class="finding">
+        <span class="finding-no">3</span>
+        <h4>분야마다 표본이 적다</h4>
+        <p data-bind="finding-samples">분야당 학습 이미지가 적어 그림체가 비슷한 분야(일러스트가 많은 공모전과 캠페인 등)를 구분할 근거가 부족했다.</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- 7. 약점 보완 (확장) -->
+  <section id="extension" class="panel panel-ext">
+    <p class="eyebrow">확장</p>
+    <h2>약점 보완 — 모델이 못 보는 글자를 더하다</h2>
+    <p class="section-lead">오류 분석의 결론(분야 정보는 글자에 있다)에서 출발해, Teachable Machine 결과는 그대로 두고 포스터 글자를 읽는 두 신호를 더했다. 모든 처리는 브라우저 안에서 무료 도구로 돌아간다.</p>
+    <div class="chart-box" id="flowChart"></div>
+    <div class="table-wrap">
+      <table class="data-table" id="variantTable">
+        <thead><tr><th>방식</th><th class="num">정확도</th><th class="num">macro-F1</th><th class="num">자동 제안 중 정답</th><th class="num">처음 보는 기관</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <ul class="checklist" id="extFacts"></ul>
+    <div class="callout">
+      <strong>공정성 원칙</strong>
+      <p>키워드 사전, 분야 설명문, 결합 비율, 판정 규칙은 모두 <strong>학습용 포스터와 라벨 규칙만 보고</strong> 만들었고, 평가 포스터를 보기 전에 고정했다. 평가는 같은 test로 한 번만 했다.</p>
+    </div>
+  </section>
+
+  <!-- 8. 한계 -->
+  <section id="limits" class="panel">
+    <h2>한계와 향후 계획</h2>
+    <ul class="checklist">
+      <li><strong>표본 크기</strong> 평가 포스터가 <span data-bind="test-n">35</span>장이고, 법·정책과 교내 행정 공지는 2장씩이다. 신뢰구간이 넓다(<span data-bind="ci-text">—</span>).</li>
+      <li><strong>같은 평가 세트 재사용</strong> 1차와 보완 평가 모두 같은 test를 썼다. 보완 규칙은 test를 보기 전에 고정해 영향을 줄였다.</li>
+      <li><strong>장식 글꼴</strong> 큰 제목만 있고 글자가 장식적인 포스터는 OCR도 읽지 못해(<span data-bind="no-kw">—</span>장) 모델 결과에만 의존한다.</li>
+      <li><strong>이미지 축소 방식에 민감하다</strong> 큰 포스터를 224px로 줄일 때 브라우저·운영체제마다 축소 알고리즘이 달라 점수가 바뀔 수 있다. 다른 환경(Linux의 Chromium)에서 test 포스터 6장을 돌려 보니 3장의 1위 분야가 평가 때와 달랐다. 평가는 Windows의 Chrome에서 했으므로 데모도 같은 환경을 권장한다. 다음 버전에서는 축소 단계를 고정한 전처리(v2)로 다시 학습해 환경 차이를 없앤다.</li>
+      <li><strong>임베딩의 효과가 작았다</strong> 분야 사이 점수가 고르게 퍼져 결합에서 힘을 쓰지 못했다.</li>
+      <li><strong>향후</strong> 분야별 포스터를 더 모아 새 평가 세트로 다시 학습하고, 결합 비율은 새 데이터로 검증한다. 외부 AI(LLM)는 비용·외부 전송·재현성 문제로 후보로만 둔다.</li>
+    </ul>
+  </section>
+
+  <!-- 9. 재현 -->
+  <section id="reproduce" class="panel">
+    <h2>재현 방법과 링크</h2>
+    <ul class="link-list" id="linkList">
+      <li id="tmShareItem" hidden><a id="tmShareLink" href="#" target="_blank" rel="noopener">Teachable Machine 모델 공유 링크</a> <span class="note-inline">— 같은 데이터·기본 설정으로 다시 학습해 업로드한 공유용 모델. 평가 수치는 원래 모델 기준</span></li>
+      <li><a href="https://github.com/ggik11/solving-ai" target="_blank" rel="noopener">GitHub 저장소 (서비스 전체 코드)</a></li>
+      <li><a href="https://github.com/ggik11/solving-ai/blob/master/docs/experiments/2026-10-21-poster-pilot/README.md" target="_blank" rel="noopener">실험 기록 (결과 파일·라벨 목록·키워드 사전)</a></li>
+      <li><a href="https://github.com/ggik11/solving-ai/blob/master/docs/teachable-machine-integration.md" target="_blank" rel="noopener">Teachable Machine 연동 설계 문서</a></li>
+    </ul>
+    <div class="table-wrap">
+      <table class="kv-table" id="versionTable"><tbody></tbody></table>
+    </div>
+    <p class="note">이 페이지의 모든 수치는 실험 기록 폴더의 원본 결과 파일(JSON·CSV)을 그 자리에서 읽어 계산해 표시한다.</p>
+  </section>
+
+  <footer>대외활동 플랫폼 팀 · 문제해결인공지능 · 이 페이지는 Teachable Machine 모델 데모와 실험 보고서입니다.</footer>
 </main>
 
 <template id="cardTemplate">
   <article class="card">
     <p class="card-filename"></p>
     <p class="card-body"></p>
+    <p class="expected-host"></p>
     <div class="image-pair">
       <figure>
         <img class="original-img" alt="원본 포스터 이미지" />
@@ -62,12 +274,23 @@
       </figure>
       <figure>
         <div class="preprocessed-host"></div>
-        <figcaption>전처리 후 (224px, pad-square-v1)</figcaption>
+        <figcaption>모델이 보는 이미지 (224px) — 작은 글자는 거의 보이지 않음</figcaption>
+      </figure>
+      <figure class="heatmap-figure" hidden>
+        <div class="heatmap-host"></div>
+        <figcaption class="heatmap-caption">판단 근거 — 빨갈수록 1위 판단에 중요한 부분</figcaption>
       </figure>
     </div>
+    <div class="top3-host"></div>
     <ul class="bars-host"></ul>
     <p class="summary-host"></p>
     <div class="verdict-host"></div>
+    <p class="reason-host"></p>
+    <div class="heatmap-actions">
+      <button type="button" class="heatmap-btn">판단 근거 보기 (가림 실험)</button>
+      <span class="heatmap-progress" role="status"></span>
+    </div>
+    <p class="heatmap-summary"></p>
   </article>
 </template>
 
